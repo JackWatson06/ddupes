@@ -1,3 +1,4 @@
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -7,7 +8,7 @@ struct DirectoryTableRow {
   typedef std::vector<DirectoryTableRow> Rows;
   unsigned int id;
   std::string name;
-  unsigned int *parent_id;
+  std::unique_ptr<unsigned int> parent_id;
 };
 
 struct HashTableRow {

@@ -1,10 +1,11 @@
 #include "extract.h"
 
 /*
+** Functionality and Design **
 - Take in the directories that we want to use to find the ddupes for.
 - Run the fdupes command over the set of the directories. I wonder how I can
 exec in c++
-- Mv and remove the cache created by fdupes into a temporary directory.
+- Move and remove the cache created by fdupes into a temporary directory.
 - Get a list of all the directories from the SQLLite
 - Simple layer structure. Domain layer has hashing logic, and structs.
 - I think I actually need a tree structure for this. Basically I create the tree
@@ -19,23 +20,19 @@ branch off the tree and store the full path of the duplicate directory or file.
 */
 
 /**
- *
- * Next Steps
- * - Sort by the shortest path in the group.
- * - Print out to std::cout
- * - Run fdupes command with the --cache flag.
- * - Load from the SQLLite db.
- * - Remove the SQLLite cache at the end.
- * - Having a filter to return the folder I am specifically looking at would be
- * wonderful.
- */
-int main() {
-  extract({"testing_dirs/dir1", "testing_dirs/dir2"});
-  return 0;
-}
+** TODO **
+- Load from the SQLLite db.
+- Remove the SQLLite cache at the end.
+- Having a filter to return the folder I am specifically looking at would be
+wonderful.
+- Change our DirectoryTableRow to use a -1 to represent a null instead of
+pointer for the parent_id.
+- How can we get the home directory of the current user when finding the hash.db
+file.
+*/
 
 /**
-
+** Example Data **
 fdupes --cache testing_dirs/dir1/ testing_dirs/dir1/
 cat ~/.cache/fdupes/hash.db
 
@@ -71,6 +68,9 @@ _g|460096331|460096331|�E��#,G.�;����P|4096|�E��#,G.�;�
 17|example7.txt|^|9|wg|wg|889871227|889871227|���u�ۮL��5�ўp|4096|���u�ۮL��5�ўp|1
 15|example8.txt|�|13|*wg|*wg|619860718|619860718|zGg+��%S��˯$tB|4096|zGg+��%S��˯$tB|1
 17|example8.txt|_|13|wg|wg|929869554|929869554|zGg+��%S��˯$tB|4096|zGg+��%S��˯$tB|1
-
-
  */
+
+int main() {
+  extract({"testing_dirs/dir1", "testing_dirs/dir2"});
+  return 0;
+}
