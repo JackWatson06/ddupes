@@ -50,6 +50,17 @@ void testFindingFDupes() {
   assert(actual_fdupes_file == "/bin/testing");
 }
 
+void testFindingFDupesStrips() {
+  // Arrange
+  MockExecuteFileCommand mock_command_shim{{{0, "/bin/testing       "}}};
+
+  // Act
+  std::string actual_fdupes_file = findFDupesCommand(mock_command_shim);
+
+  // Assert
+  assert(actual_fdupes_file == "/bin/testing");
+}
+
 void testFindingFDupesCallsCorrectCommand() {
   // Arrange
   MockExecuteFileCommand mock_command_shim{{{0, "/tests/fdupes"}}};
@@ -58,7 +69,7 @@ void testFindingFDupesCallsCorrectCommand() {
   findFDupesCommand(mock_command_shim);
 
   // Assert
-  std::vector<std::string> expected_commands{"/bin/which fdupes"};
+  std::vector<std::string> expected_commands{"/bin/which which fdupes"};
   assert(mock_command_shim.commands_executed == expected_commands);
 }
 
@@ -110,7 +121,7 @@ void testCheckingVersionCallsCorrectCommands() {
   checkFDupesVersion("/bin/fdupes", mock_command_shim);
 
   // Assert
-  std::vector<std::string> expected_commands{{"/bin/fdupes --version"}};
+  std::vector<std::string> expected_commands{{"/bin/fdupes fdupes --version"}};
   assert(mock_command_shim.commands_executed == expected_commands);
 }
 
@@ -138,6 +149,19 @@ void testExtractingVersionWithToLittleNumbers() {
   } catch (MissingVersionException& e) {
     assert(true);
   }
+}
+
+/* ---------------------------------- strip --------------------------------- */
+
+void testStripingAString() {
+  // Arrange
+  std::string test_string = "    test    ";
+
+  // Act
+  std::string actual_string = strip(test_string);
+
+  // Assert
+  assert(actual_string == "test");
 }
 
 /* ------------------------------ SemVer ------------------------------ */
@@ -171,7 +195,7 @@ void testExecuteFDupesCallsCorrectCommands() {
 
   // Assert
   std::vector<std::string> expected_commands{
-      "/bin/fdupes --cache testing_dirs/dir1 testing_dirs/dir2"};
+      "/bin/fdupes fdupes --cache testing_dirs/dir1 testing_dirs/dir2"};
   assert(mock_command_shim.commands_executed == expected_commands);
 }
 
@@ -203,6 +227,7 @@ void testExceptionOnFDupesCacheBuild() {
 /* -------------------------------------------------------------------------- */
 int main() {
   testFindingFDupes();
+  testFindingFDupesStrips();
   testFindingFDupesCallsCorrectCommand();
   testExceptionOnMissingFDupes();
   testExceptionOnFailedFDupesVersionCommand();
@@ -210,6 +235,7 @@ int main() {
   testCheckingVersionCallsCorrectCommands();
   testExtractingVersionFromString();
   testExtractingVersionWithToLittleNumbers();
+  testStripingAString();
   testSemVerGreaterThanOrEqualTo();
   testSemVerEquality();
   testExecuteFDupesCallsCorrectCommands();

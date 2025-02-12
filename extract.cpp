@@ -1,14 +1,9 @@
 #include "extract.h"
 
 #include <sys/wait.h>
-#include <unistd.h>
 
 #include <cerrno>
-#include <cstring>
 #include <regex>
-#include <stdexcept>
-#include <string>
-#include <system_error>
 
 // Remove the below
 #include <iostream>
@@ -42,10 +37,20 @@ std::string read_from_fd(int fd) {
 
 /**
  * Return -1 if the executed process was deemed to have returned abnormally.
+ * Aparently when you use exec you have to technically pass the command name
+ * twice. Such as "which which ls". This is because the first specifies the
+ * actual file that we want to execute. The second gets forwarded as argv[0].
+ * This happens automatically on the command line.
+ *
  * See: https://linux.die.net/man/2/waitpid
  */
 ExecuteFileResult ForkExecuteFileCommand::execute(
     const std::string path, const std::vector<std::string> args) {
+  std::vector<char*> arg_c_strings;
+  for (const std::string& arg : args) {
+    arg_c_strings.push_back(strdup(arg.c_str()));
+  }
+
   int command_fds[2];
 
   // Create two pipes. Each pipe has one read end and one write end.
@@ -69,14 +74,10 @@ ExecuteFileResult ForkExecuteFileCommand::execute(
     // file descriptor.
     close(command_fds[0]);
     dup2(command_fds[1], STDOUT_FILENO);
+    dup2(command_fds[1], STDERR_FILENO);
     close(command_fds[1]);  // Close the write end.
 
     // Execute our command after converting to proper commmand input.
-    std::vector<char*> arg_c_strings;
-    for (const std::string& arg : args) {
-      arg_c_strings.push_back(strdup(arg.c_str()));
-    }
-
     execv(path.c_str(), arg_c_strings.data());
     perror("exec");
     exit(1);
@@ -110,21 +111,36 @@ SemVer extractVersionFromString(std::string& version_output) {
   throw MissingVersionException("Could not find the version number.");
 }
 
+std::string strip(const std::string& input) {
+  auto start_it = input.begin();
+  auto end_it = input.rbegin();
+  while (std::isspace(*start_it)) {
+    ++start_it;
+  }
+
+  while (std::isspace(*end_it)) {
+    ++end_it;
+  }
+
+  return std::string(start_it, end_it.base());
+}
+
 std::string findFDupesCommand(ForkExecuteFileCommand& executor) {
-  ExecuteFileResult which_result = executor.execute("/bin/which", {"fdupes"});
+  ExecuteFileResult which_result =
+      executor.execute("/bin/which", {"which", "fdupes"});
 
   if (which_result.return_code != 0) {
     throw NoFDupesException(
         "Could not find the fdupes command on your system!");
   }
 
-  return which_result.output;
+  return strip(which_result.output);
 }
 
 void checkFDupesVersion(std::string fdupes_file,
                         ForkExecuteFileCommand& executor) {
   ExecuteFileResult fdupes_version_result =
-      executor.execute(fdupes_file, {"--version"});
+      executor.execute(fdupes_file, {"fdupes", "--version"});
 
   if (fdupes_version_result.return_code != 0) {
     throw FDupesVersionException("Could not run the fdupes version command.");
@@ -139,7 +155,7 @@ void checkFDupesVersion(std::string fdupes_file,
 void executeFDupesCacheBuild(std::string fdupes_file,
                              RelativePaths paths_to_check,
                              ForkExecuteFileCommand& executor) {
-  std::vector<std::string> args{"--cache"};
+  std::vector<std::string> args{"fdupes", "--cache"};
 
   for (const std::string path_to_check : paths_to_check) {
     args.push_back(path_to_check);
@@ -153,11 +169,12 @@ void executeFDupesCacheBuild(std::string fdupes_file,
   }
 }
 
-void extract(RelativePaths& paths) {
+void extract(const RelativePaths& paths) {
   ForkExecuteFileCommand executor;
 
   std::string file_dupes_file = findFDupesCommand(executor);
-  std::cout << file_dupes_file;
+  checkFDupesVersion(file_dupes_file, executor);
+  executeFDupesCacheBuild(file_dupes_file, paths, executor);
 }
 
 // Verify cache exists.

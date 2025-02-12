@@ -1,3 +1,3 @@
 #!/bin/bash
 
-g++ -g *.cpp -L/usr/lib -lssl -lcrypto -o build/ddupes.o
+g++ -g extract.cpp load.cpp transform.cpp ddupes.cpp -L/usr/lib -lssl -lcrypto -o build/ddupes.o

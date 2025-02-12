@@ -52,6 +52,7 @@ typedef std::vector<std::string> RelativePaths;
 std::string findFDupesCommand(ForkExecuteFileCommand& executor);
 void checkFDupesVersion(std::string fdupes_file,
                         ForkExecuteFileCommand& executor);
+std::string strip(const std::string& input);
 SemVer extractVersionFromString(std::string& version_string);
 void executeFDupesCacheBuild(std::string fdupes_file,
                              RelativePaths paths_to_check,
