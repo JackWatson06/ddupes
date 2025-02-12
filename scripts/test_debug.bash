@@ -1,6 +1,10 @@
 #!/bin/bash
 
 case "$1" in
+  "extract")
+    g++ -g test_extract.cpp extract.cpp -L/usr/lib -lssl -lcrypto -o build/test_extract.o
+    gdb "build/test_extract.o"
+    ;;
   "transform")
     g++ -g test_transform.cpp transform.cpp -L/usr/lib -lssl -lcrypto -o build/test_transform.o
     gdb "build/test_transform.o"

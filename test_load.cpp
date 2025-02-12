@@ -3,6 +3,11 @@
 
 #include "./load.h"
 
+/* -------------------------------------------------------------------------- */
+/*                                    Tests                                   */
+/* -------------------------------------------------------------------------- */
+
+/* ---------------------------- joinVectorString ---------------------------- */
 void testJoiningAVectorString() {
   // Arrange
   SVector test_vector_string = {"test", "test_two", "test_three",
@@ -17,6 +22,7 @@ void testJoiningAVectorString() {
   assert(actual_joined_string == expected_joined_string);
 }
 
+/* ------------------------- joinDuplicateINodePaths ------------------------ */
 void testJoiningPathsWithDelimiter() {
   // Arrange
   DuplicateINodesSet test_duplicate_i_nodes_set = {
@@ -34,6 +40,7 @@ void testJoiningPathsWithDelimiter() {
   assert(expected_join_output == actual_join_output);
 }
 
+/* ------------------------- printDuplicateINodeSet ------------------------- */
 void testPrintingDuplicateToScreen() {
   // Arrange
   std::ostringstream mock_cout{};
@@ -58,6 +65,9 @@ void testPrintingDuplicateToScreen() {
   assert(actual_output == expected_output);
 }
 
+/* -------------------------------------------------------------------------- */
+/*                                    Main                                    */
+/* -------------------------------------------------------------------------- */
 int main() {
   testJoiningAVectorString();
   testJoiningPathsWithDelimiter();

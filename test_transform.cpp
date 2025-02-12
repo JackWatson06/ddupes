@@ -3,6 +3,9 @@
 
 #include "./transform.h"
 
+/* -------------------------------------------------------------------------- */
+/*                                    Mocks                                   */
+/* -------------------------------------------------------------------------- */
 const Hash TEST_HASH{255, 255, 255, 255, 255, 255, 255, 255,
                      255, 255, 255, 255, 255, 255, 255, 255};
 
@@ -22,6 +25,11 @@ bool compareHashToDuplicateNotes(DuplicatePathsMap& one,
   return true;
 }
 
+/* -------------------------------------------------------------------------- */
+/*                                    Tests                                   */
+/* -------------------------------------------------------------------------- */
+
+/* --------------------------- countShortestVector -------------------------- */
 void testCountingShortestVectorLength() {
   // Arrange
   Paths paths_one = {
@@ -47,6 +55,7 @@ void testCountingVectorsWithLengthZeroReturnsZero() {
   assert(actual_path_count == 0);
 }
 
+/* ------------------------------- computeHash ------------------------------ */
 void testHashingAListOfHashes() {
   // Arrange
   Hashes test_hashes{TEST_HASH, TEST_HASH, TEST_HASH};
@@ -73,6 +82,7 @@ void testTwoHashesAreDifferent() {
   assert(actual_hash_one != actual_hash_two);
 }
 
+/* ------------------------- buildDirectoryRowIdMap ------------------------- */
 void testBuildingDirectoryRowIdMap() {
   const DirectoryTableRow::Rows test_directory_results = {
       {1, "/", nullptr},
@@ -99,6 +109,7 @@ void testBuildingDirectoryRowIdMap() {
   }
 }
 
+/* --------------------------- buildDirectoryTree --------------------------- */
 void testDuplicateDirectoryTreeCreation() {
   // Arrange
   const DirectoryTableRow::Rows test_directory_results = {
@@ -186,6 +197,7 @@ void testWeGetEmptyDirectoryTreeWithEmptyHashRows() {
   }
 }
 
+/* --------------------------- buildFileNodeBranch -------------------------- */
 void testBuildingSingleFileNodeBranch() {
   // Arrange
   const DirectoryTableRow::Rows test_directory_results = {
@@ -228,6 +240,7 @@ void testBuildingSingleFileNodeBranch() {
   }
 }
 
+/* ------------------------- mergeTwoDirectoryNodes ------------------------- */
 void testMergingTwoBranches() {
   // Arrange
   DirectoryNode testing_directory_tree_one{
@@ -304,6 +317,7 @@ void testWeGetEmptyDirectoryTreeWhenMergingTreesWithoutSameRoot() {
   assert(expected_directory_tree == actual_directory_tree);
 }
 
+/* ---------------------------- mergeTwoFileLists --------------------------- */
 void testMergingFileLists() {
   // Arrange
   FileNode::Files test_files_one = {
@@ -330,6 +344,7 @@ void testMergingFileLists() {
   assert(actual_files == expected_files);
 }
 
+/* ------------------------- mergeTwoDirectoryLists ------------------------- */
 void testMergingDirectories() {
   // Arrange
   DirectoryNode::Directories test_directories_one = {
@@ -379,6 +394,7 @@ void testMergingDirectories() {
   assert(actual_directories == expected_directories);
 }
 
+/* -------------------------------- HashNode -------------------------------- */
 void testHashNodeEqualOperator() {
   // Arrange
   const HashNode test_hash_node_one = {
@@ -408,6 +424,7 @@ void testHashNodeEqualOperator() {
   assert(equality_test);
 }
 
+/* -------------------------------- FileNode -------------------------------- */
 void testFileNodeEqualOperator() {
   // Arrange
   const FileNode test_file_node_one{"testing1.txt", Hash{255, 255, 255}};
@@ -421,6 +438,7 @@ void testFileNodeEqualOperator() {
   assert(equality_test);
 }
 
+/* ------------------------------ DirectoryNode ----------------------------- */
 void testDirectoryNodeEqualOperator() {
   // Arrange
   const DirectoryNode test_directory_node_one{
@@ -442,6 +460,7 @@ void testDirectoryNodeEqualOperator() {
   assert(equality_result);
 }
 
+/* ---------------------------- computeHashNode ---------------------------- */
 void testCalculatingHashFromHashNodes() {
   // Arrange
   HashNode::HashedNodes test_hash_nodes = {
@@ -458,6 +477,7 @@ void testCalculatingHashFromHashNodes() {
   assert(expected_hash == actual_hash);
 }
 
+/* ----------------------------- buildHashNodes ----------------------------- */
 void testConvertingFileNodesToHashNodes() {
   // Arrange
   FileNode::Files test_files = {FileNode{"testing1.txt", TEST_HASH},
@@ -474,6 +494,7 @@ void testConvertingFileNodesToHashNodes() {
   assert(expected_hash_nodes == actual_hash_nodes);
 }
 
+/* ------------------------------ buildHashNode ----------------------------- */
 void testConvertingLeafDirectoryNodeToHashNode() {
   // Arrange
   DirectoryNode test_directory_node = {
@@ -524,6 +545,7 @@ void testConvertingNestedDirectoryNodeToHashNode() {
   assert(actual_directory_hash_node == expected_directory_hash_node);
 }
 
+/* ----------------------------- HashPathSegment ---------------------------- */
 void testHashPathSegmentEqualOperator() {
   // Arrange
   HashPathSegment test_one{"testing", "test"};
@@ -536,6 +558,7 @@ void testHashPathSegmentEqualOperator() {
   assert(equality_test == true);
 }
 
+/* ---------------------- buildHashToDuplicateNodesMap ---------------------- */
 void testSearchingTreeForDuplicateNodes() {
   // Arrange
   HashNode test_directory_node = {
@@ -595,6 +618,7 @@ void testSearchingTreeForDuplicateNodes() {
                               actual_duplicate_nodes.map);
 }
 
+/* --------------------------- buildStringFromHash -------------------------- */
 void testConvertingHashToString() {
   // Arrange
   Hash hash{200, 255, 255};
@@ -608,6 +632,7 @@ void testConvertingHashToString() {
   assert(actual_string == expected_string);
 }
 
+/* ------------------- filterNonDuplicatesFromDupNodesMap ------------------- */
 void testFilteringMapReturnsDuplicates() {
   // Arrange
   HashToDuplicateNodes test_duplicate_nodes{
@@ -673,6 +698,7 @@ void testFilteringMapReturnsDuplicates() {
                               expected_duplicate_nodes.map);
 }
 
+/* ----------------------------- hasSharedParent ---------------------------- */
 void testHasSharedParent() {
   // Arrange
   DuplicatePaths test_duplicate_paths{
@@ -736,6 +762,7 @@ void testDoesNotHaveSharedParentWhenEmpty() {
   assert(actual_has_shared_parent == false);
 }
 
+/* -------------------------- filterSharedHashNodes ------------------------- */
 void testFilteringSharedHashNodes() {
   // Arrange
   HashToDuplicateNodes test_duplicate_nodes{
@@ -792,6 +819,7 @@ void testFilteringSharedHashNodes() {
                               expected_duplicate_nodes.map);
 }
 
+/* ------------------------- buildPathsFromHashPath ------------------------- */
 void testBuildingSVectorFromPathSegment() {
   // Arrange
   HashPath test_path_segment = {{"apple", "\x01"}, {"orange", "\x02"}};
@@ -804,6 +832,7 @@ void testBuildingSVectorFromPathSegment() {
   assert(actual_paths == expected_paths);
 }
 
+/* ------------------------- buildDuplicateINodeSet ------------------------- */
 void testBuildingDuplicateINotesSet() {
   // Arrange
   DuplicatePathsMap test_duplicate_nodes{
@@ -829,6 +858,7 @@ void testBuildingDuplicateINotesSet() {
   assert(actual_duplicate_i_nodes_set == expected_duplicate_i_node_set);
 }
 
+/* ------------------------------- comparePath ------------------------------ */
 void testComparingPathReturnsBefore() {
   // Arrange
   SVector path_one = {"testing", "apples", "apple",          "dir3",
@@ -855,6 +885,7 @@ void testComparingSizeWhenBothPathsHaveEqualParts() {
   assert(actual_sort_result == false);
 }
 
+/* ------------------------------ comparePaths ------------------------------ */
 void testComparingPathsReturnsBefore() {
   // Arrange
   Paths paths_one = {
@@ -873,6 +904,7 @@ void testComparingPathsReturnsBefore() {
   assert(actual_sort_result == true);
 }
 
+/* -------------------------------- sortPaths ------------------------------- */
 void testSortingPaths() {
   // Arrange
   Paths test_duplicate_paths = {
@@ -896,6 +928,7 @@ void testSortingPaths() {
   assert(test_duplicate_paths == expected_duplicate_paths);
 }
 
+/* ------------------------- sortDuplicateINodesSet ------------------------- */
 void testSortingDuplicateINodesSet() {
   // Arrange
   DuplicateINodesSet test_duplicate_i_nodes_set = {
@@ -923,6 +956,7 @@ void testSortingDuplicateINodesSet() {
   assert(test_duplicate_i_nodes_set == expected_sorted_duplicate_i_nodes_set);
 }
 
+/* -------------------------------- transform ------------------------------- */
 /**
  * apple
  *  |- one.txt {1}
@@ -996,6 +1030,9 @@ void testTransforming() {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/*                                    Main                                    */
+/* -------------------------------------------------------------------------- */
 int main() {
   testCountingShortestVectorLength();
   testCountingVectorsWithLengthZeroReturnsZero();

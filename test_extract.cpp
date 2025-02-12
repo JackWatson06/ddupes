@@ -4,56 +4,213 @@
 
 #include "extract.h"
 
-class MockExecuteFileCommand : public ExecuteFileCommand {
+/* -------------------------------------------------------------------------- */
+/*                                    Mocks                                   */
+/* -------------------------------------------------------------------------- */
+class MockExecuteFileCommand : public ForkExecuteFileCommand {
  public:
-  MockExecuteFileCommand(int return_code) : return_code(return_code) {};
-  int execute(std::string command) override;
+  std::vector<std::string> commands_executed;
+  MockExecuteFileCommand(std::vector<ExecuteFileResult> mock_results)
+      : mock_results(mock_results) {};
+  ExecuteFileResult execute(const std::string path,
+                            std::vector<std::string> args) override;
 
  private:
-  int return_code;
-  std::vector<std::string> commands_executed;
+  std::vector<ExecuteFileResult> mock_results;
 };
 
-int MockExecuteFileCommand::execute(std::string command) {
+ExecuteFileResult MockExecuteFileCommand::execute(
+    const std::string path, const std::vector<std::string> args) {
+  std::string command = path + " ";
+
+  for (auto iter = args.begin(); iter != args.end() - 1; ++iter) {
+    command += *iter + " ";
+  }
+  command += *(args.end() - 1);
+
   commands_executed.push_back(command);
-  return return_code;
+  auto result = mock_results.back();
+  mock_results.pop_back();
+  return result;
 }
 
-void testVerifyingFDupesCallsTheCorrectCommand() {
+/* -------------------------------------------------------------------------- */
+/*                                    Tests                                   */
+/* -------------------------------------------------------------------------- */
+
+/* ---------------------------- findFDupesCommand --------------------------- */
+void testFindingFDupes() {
   // Arrange
-  bool called_exception = false;
-  MockExecuteFileCommand mock_command_shim{0};
+  MockExecuteFileCommand mock_command_shim{{{0, "/bin/testing"}}};
 
   // Act
-  validateFDupesDependency(mock_command_shim);
+  std::string actual_fdupes_file = findFDupesCommand(mock_command_shim);
 
   // Assert
-  assert(mock_command_shim.commands_executed ==
-         {"which fdupes > /dev/null 2>&1", "fdupes --version"});
+  assert(actual_fdupes_file == "/bin/testing");
 }
 
-void testVeryifyingFDupes() {
+void testFindingFDupesCallsCorrectCommand() {
   // Arrange
-  bool called_exception = false;
-  MockExecuteFileCommand mock_command{1};
+  MockExecuteFileCommand mock_command_shim{{{0, "/tests/fdupes"}}};
 
   // Act
+  findFDupesCommand(mock_command_shim);
+
+  // Assert
+  std::vector<std::string> expected_commands{"/bin/which fdupes"};
+  assert(mock_command_shim.commands_executed == expected_commands);
+}
+
+void testExceptionOnMissingFDupes() {
+  // Arrange
+  MockExecuteFileCommand mock_command_shim{{{1, ""}}};
+
+  // Act & Assert
   try {
-    vlidateFDupesDependency(mock_command{);
-      called_exception = true;
-  } catch (DependencyException e) {
-      called_exception = false;
+    findFDupesCommand(mock_command_shim);
+    assert(false);
+  } catch (NoFDupesException& e) {
+    assert(true);
   }
+}
+
+/* --------------------------- checkFDupesVersion --------------------------- */
+void testExceptionOnFailedFDupesVersionCommand() {
+  // Arrange
+  MockExecuteFileCommand mock_command_shim{{{1, ""}}};
+
+  // Act & Assert
+  try {
+    checkFDupesVersion("/bin/fdupes", mock_command_shim);
+    assert(false);
+  } catch (FDupesVersionException& e) {
+    assert(true);
+  }
+}
+
+void testExceptionOnInvalidVersionCommand() {
+  // Arrange
+  MockExecuteFileCommand mock_command_shim{{{0, "1.9.0"}}};
+
+  // Act & Assert
+  try {
+    checkFDupesVersion("/bin/fdupes", mock_command_shim);
+    assert(false);
+  } catch (InvalidVersionException& e) {
+    assert(true);
+  }
+}
+
+void testCheckingVersionCallsCorrectCommands() {
+  // Arrange
+  MockExecuteFileCommand mock_command_shim{{{0, "2.0.0"}}};
+
+  // Act
+  checkFDupesVersion("/bin/fdupes", mock_command_shim);
 
   // Assert
-  assert(called_exception == true);
+  std::vector<std::string> expected_commands{{"/bin/fdupes --version"}};
+  assert(mock_command_shim.commands_executed == expected_commands);
+}
+
+/* ------------------------ extractVersionFromString ------------------------ */
+void testExtractingVersionFromString() {
+  // Arrange
+  std::string test_fdupes_output = "1.0.2";
+
+  // Act
+  SemVer actual_version_output = extractVersionFromString(test_fdupes_output);
+
+  // Assert
+  SemVer expected_version_output = {1, 0, 2};
+  assert(actual_version_output == expected_version_output);
+}
+
+void testExtractingVersionWithToLittleNumbers() {
+  // Arrange
+  std::string test_fdupes_output = "1.0";
+
+  // Act & Assert
+  try {
+    SemVer actual_version_output = extractVersionFromString(test_fdupes_output);
+    assert(false);
+  } catch (MissingVersionException& e) {
+    assert(true);
   }
+}
 
-  void testBuildingTheFileCache() {
-    // Arrange
-    RelativePaths paths{"./testing_dirs/dir1", "./testing_dirs/dir2"};
+/* ------------------------------ SemVer ------------------------------ */
+void testSemVerGreaterThanOrEqualTo() {
+  // Arrange
+  SemVer test_one{1, 0, 25};
+  SemVer test_two{2, 0, 25};
 
-    buildFileCache("./testing_dirs/dir1", "./testing_dirs/dir2");
+  // Act & Assert
+  assert(test_two >= test_one);
+}
 
-    // Test if the file cache exists where it get's stored in fdupes.
+void testSemVerEquality() {
+  // Arrange
+  SemVer test_one{1, 20, 25};
+  SemVer test_two{1, 20, 25};
+
+  // Act & Assert
+  assert(test_two == test_one);
+}
+
+/* ------------------------- executeFDupesCacheBuild ------------------------ */
+
+void testExecuteFDupesCallsCorrectCommands() {
+  // Arrange
+  MockExecuteFileCommand mock_command_shim({{0, ""}});
+  RelativePaths test_paths{"testing_dirs/dir1", "testing_dirs/dir2"};
+
+  // Act
+  executeFDupesCacheBuild("/bin/fdupes", test_paths, mock_command_shim);
+
+  // Assert
+  std::vector<std::string> expected_commands{
+      "/bin/fdupes --cache testing_dirs/dir1 testing_dirs/dir2"};
+  assert(mock_command_shim.commands_executed == expected_commands);
+}
+
+void testExceptionOnFDupesCacheBuild() {
+  // Arrange
+  MockExecuteFileCommand mock_command_shim({{1, ""}});
+  RelativePaths test_paths{"testing_dirs/dir1"};
+
+  // Act & Assert
+  try {
+    executeFDupesCacheBuild("/bin/fdupes", test_paths, mock_command_shim);
+    assert(false);
+  } catch (FailedFDupesCacheBuildException& e) {
+    assert(true);
   }
+}
+
+// void testBuildingTheFileCache() {
+//   // Arrange
+//   RelativePaths paths{"./testing_dirs/dir1", "./testing_dirs/dir2"};
+
+//   buildFileCache("./testing_dirs/dir1", "./testing_dirs/dir2");
+
+//   // Test if the file cache exists where it get's stored in fdupes.
+// }
+
+/* -------------------------------------------------------------------------- */
+/*                                    Main                                    */
+/* -------------------------------------------------------------------------- */
+int main() {
+  testFindingFDupes();
+  testFindingFDupesCallsCorrectCommand();
+  testExceptionOnMissingFDupes();
+  testExceptionOnFailedFDupesVersionCommand();
+  testExceptionOnInvalidVersionCommand();
+  testCheckingVersionCallsCorrectCommands();
+  testExtractingVersionFromString();
+  testExtractingVersionWithToLittleNumbers();
+  testSemVerGreaterThanOrEqualTo();
+  testSemVerEquality();
+  testExecuteFDupesCallsCorrectCommands();
+}

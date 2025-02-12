@@ -1,13 +1,4 @@
-#include "ddupes.h"
-
-#include <openssl/evp.h>
-#include <sqlite3.h>
-
-#include <algorithm>
-#include <iostream>
-#include <queue>
-
-constexpr uint MD5_DIGEST_LENGTH = 16;
+#include "extract.h"
 
 /*
 - Take in the directories that we want to use to find the ddupes for.
@@ -38,9 +29,15 @@ branch off the tree and store the full path of the duplicate directory or file.
  * - Having a filter to return the folder I am specifically looking at would be
  * wonderful.
  */
-int main() { return 1; }
+int main() {
+  extract({"testing_dirs/dir1", "testing_dirs/dir2"});
+  return 0;
+}
 
 /**
+
+fdupes --cache testing_dirs/dir1/ testing_dirs/dir1/
+cat ~/.cache/fdupes/hash.db
 
 Directories
 1|/|/|

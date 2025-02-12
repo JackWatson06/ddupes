@@ -46,7 +46,9 @@
       "streambuf": "cpp",
       "cinttypes": "cpp",
       "typeinfo": "cpp",
-      "sstream": "cpp"
+      "sstream": "cpp",
+      "cstring": "cpp",
+      "list": "cpp"
     },
     "C_Cpp.formatting": "default",
     "C_Cpp.clang_format_fallbackStyle": "Google",
