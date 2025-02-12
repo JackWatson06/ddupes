@@ -34,6 +34,25 @@ ExecuteFileResult MockExecuteFileCommand::execute(
   return result;
 }
 
+class MockFileExistenceCheck : public FileExistenceCheck {
+ public:
+  std::vector<std::string> files_checked;
+  MockFileExistenceCheck(std::vector<bool> exists_results)
+      : exists_results(exists_results) {};
+
+  bool check(const std::string& file_name) override;
+
+ private:
+  std::vector<bool> exists_results;
+};
+
+bool MockFileExistenceCheck::check(const std::string& file_name) {
+  files_checked.push_back(file_name);
+  auto result = exists_results.back();
+  exists_results.pop_back();
+  return result;
+}
+
 /* -------------------------------------------------------------------------- */
 /*                                    Tests                                   */
 /* -------------------------------------------------------------------------- */
@@ -213,14 +232,32 @@ void testExceptionOnFDupesCacheBuild() {
   }
 }
 
-// void testBuildingTheFileCache() {
-//   // Arrange
-//   RelativePaths paths{"./testing_dirs/dir1", "./testing_dirs/dir2"};
+/* ---------------------------- verifyCacheExists --------------------------- */
 
-//   buildFileCache("./testing_dirs/dir1", "./testing_dirs/dir2");
+void testCheckingTheFileForExistence() {
+  // Arrange
+  MockFileExistenceCheck mock_existence_check{{true}};
 
-//   // Test if the file cache exists where it get's stored in fdupes.
-// }
+  // Act
+  verifyCacheExists("/tmp/test.cache", mock_existence_check);
+
+  // Assert
+  std::vector<std::string> expected_checked_files{"/tmp/test.cache"};
+  assert(mock_existence_check.files_checked == expected_checked_files);
+}
+
+void testExceptionOnNonExistingCache() {
+  // Arrange
+  MockFileExistenceCheck mock_existence_check{{false}};
+
+  // Act & Assert
+  try {
+    verifyCacheExists("/tmp/test.cache", mock_existence_check);
+    assert(false);
+  } catch (CacheNotFoundException& e) {
+    assert(true);
+  }
+}
 
 /* -------------------------------------------------------------------------- */
 /*                                    Main                                    */
@@ -239,4 +276,6 @@ int main() {
   testSemVerGreaterThanOrEqualTo();
   testSemVerEquality();
   testExecuteFDupesCallsCorrectCommands();
+  testCheckingTheFileForExistence();
+  testExceptionOnNonExistingCache();
 }

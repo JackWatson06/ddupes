@@ -18,6 +18,9 @@ class MissingVersionException : std::runtime_error {
 class FailedFDupesCacheBuildException : std::runtime_error {
   using std::runtime_error::runtime_error;
 };
+class CacheNotFoundException : std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
 class CommandExecutionException : std::system_error {
  public:
   using std::system_error::system_error;
@@ -47,6 +50,11 @@ class ForkExecuteFileCommand {
                                     const std::vector<std::string> args);
 };
 
+class FileExistenceCheck {
+ public:
+  virtual bool check(const std::string& file_name);
+};
+
 typedef std::vector<std::string> RelativePaths;
 
 std::string findFDupesCommand(ForkExecuteFileCommand& executor);
@@ -57,4 +65,6 @@ SemVer extractVersionFromString(std::string& version_string);
 void executeFDupesCacheBuild(std::string fdupes_file,
                              RelativePaths paths_to_check,
                              ForkExecuteFileCommand& executor);
+void verifyCacheExists(const std::string& file_name,
+                       FileExistenceCheck& checker);
 void extract(const RelativePaths& paths);

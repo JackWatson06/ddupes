@@ -1,5 +1,6 @@
 #include "extract.h"
 
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 #include <cerrno>
@@ -99,6 +100,11 @@ ExecuteFileResult ForkExecuteFileCommand::execute(
   return {.return_code = -1, .output = output};
 }
 
+bool FileExistenceCheck::check(const std::string& file_name) {
+  struct stat buffer;
+  return (stat(file_name.c_str(), &buffer) == 0);
+}
+
 SemVer extractVersionFromString(std::string& version_output) {
   std::regex version_regex("(\\d+)\\.(\\d+)\\.(\\d+)");
   std::smatch version_matches;
@@ -169,15 +175,25 @@ void executeFDupesCacheBuild(std::string fdupes_file,
   }
 }
 
+void verifyCacheExists(const std::string& file_name,
+                       FileExistenceCheck& checker) {
+  bool file_exists = checker.check(file_name);
+
+  if (!file_exists) {
+    throw CacheNotFoundException("The file cache passed in was not found!");
+  }
+}
+
 void extract(const RelativePaths& paths) {
   ForkExecuteFileCommand executor;
+  FileExistenceCheck checker;
 
   std::string file_dupes_file = findFDupesCommand(executor);
   checkFDupesVersion(file_dupes_file, executor);
   executeFDupesCacheBuild(file_dupes_file, paths, executor);
+  // How can I make it work with a path relative to home?
+  verifyCacheExists("/home/jack/.cache/fdupes/hash.db", checker);
 }
-
-// Verify cache exists.
 
 // Load cache database into sqllite.
 
