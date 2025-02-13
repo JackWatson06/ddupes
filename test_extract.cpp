@@ -34,25 +34,6 @@ ExecuteFileResult MockExecuteFileCommand::execute(
   return result;
 }
 
-class MockFileExistenceCheck : public FileExistenceCheck {
- public:
-  std::vector<std::string> files_checked;
-  MockFileExistenceCheck(std::vector<bool> exists_results)
-      : exists_results(exists_results) {};
-
-  bool check(const std::string& file_name) override;
-
- private:
-  std::vector<bool> exists_results;
-};
-
-bool MockFileExistenceCheck::check(const std::string& file_name) {
-  files_checked.push_back(file_name);
-  auto result = exists_results.back();
-  exists_results.pop_back();
-  return result;
-}
-
 /* -------------------------------------------------------------------------- */
 /*                                    Tests                                   */
 /* -------------------------------------------------------------------------- */
@@ -233,6 +214,24 @@ void testExceptionOnFDupesCacheBuild() {
 }
 
 /* ---------------------------- verifyCacheExists --------------------------- */
+class MockFileExistenceCheck : public FileExistenceCheck {
+ public:
+  std::vector<std::string> files_checked;
+  MockFileExistenceCheck(std::vector<bool> exists_results)
+      : exists_results(exists_results) {};
+
+  bool check(const std::string& file_name) override;
+
+ private:
+  std::vector<bool> exists_results;
+};
+
+bool MockFileExistenceCheck::check(const std::string& file_name) {
+  files_checked.push_back(file_name);
+  auto result = exists_results.back();
+  exists_results.pop_back();
+  return result;
+}
 
 void testCheckingTheFileForExistence() {
   // Arrange
@@ -259,6 +258,136 @@ void testExceptionOnNonExistingCache() {
   }
 }
 
+/* ------------------------- loadDataFromSQLiteCache ------------------------ */
+template <class T>
+struct StepResults {
+  bool done;
+  T last_row_fetch_result;
+};
+
+template <class T>
+class MockDatabaseView : public TableView<T> {
+ public:
+  std::vector<std::string> queries_executed;
+
+  MockDatabaseView(std::vector<StepResults<T>> step_outputs)
+      : step_results(), queries_executed({}) {};
+
+  void prepare(std::string query) { queries_executed.push_back(query); }
+
+  bool step() {
+    auto step_result = step_results.back();
+    step_results.pop_back();
+    last_row_fetched = step_result.last_row_fetch_result;
+    return step_result.done;
+  }
+
+ private:
+  std::vector<StepResults<T>> step_results;
+};
+
+typedef StepResults<DirectoryTableRow> DirectoryTableStep;
+typedef StepResults<HashTableRow> HashTableStep;
+
+const std::vector<StepResults<DirectoryTableRow>> mock_directory_view_responses{
+    DirectoryTableStep{true, {1, "test", 1}},
+    DirectoryTableStep{false, {1, "test_two", 1}}};
+
+const std::vector<StepResults<HashTableRow>> mock_hash_view_responses = {
+    HashTableStep{true, {1, "test", NULL}},
+    HashTableStep{false, {1, "test_two", NULL}}};
+
+void testLoadDateFromSQLite() {
+  // Arrange
+  MockDatabaseView<DirectoryTableRow> mock_directory_view{
+      mock_directory_view_responses};
+  MockDatabaseView<HashTableRow> mock_hash_view{mock_hash_view_responses};
+
+  // Act
+  FileHashRows actual_rows = loadDataFromCache(
+      (TableView<DirectoryTableRow>* const)&mock_directory_view,
+      (TableView<HashTableRow>* const)&mock_hash_view);
+
+  // Assert
+  FileHashRows expected_rows{
+      {DirectoryTableRow{1, "test", 1}, DirectoryTableRow{1, "test_two", 1}},
+      {HashTableRow{1, "test", NULL}, HashTableRow{1, "test_two", NULL}}};
+  assert(actual_rows == expected_rows);
+}
+
+void testLoadDateFromSQLiteCallsCorrectDirectoryQuery() {
+  // Arrange
+  MockDatabaseView<DirectoryTableRow> mock_directory_view{
+      mock_directory_view_responses};
+  MockDatabaseView<HashTableRow> mock_hash_view{mock_hash_view_responses};
+
+  // Act
+  FileHashRows actual_rows = loadDataFromCache(
+      (TableView<DirectoryTableRow>* const)&mock_directory_view,
+      (TableView<HashTableRow>* const)&mock_hash_view);
+
+  // Assert
+  std::vector<std::string> expected_queries = {"SELECT * FROM Directories;"};
+  assert(mock_directory_view.queries_executed == expected_queries);
+}
+
+void testLoadDateFromSQLiteCallsCorrectHashQuery() {
+  // Arrange
+  MockDatabaseView<DirectoryTableRow> mock_directory_view{
+      mock_directory_view_responses};
+  MockDatabaseView<HashTableRow> mock_hash_view{mock_hash_view_responses};
+
+  // Act
+  FileHashRows actual_rows = loadDataFromCache(
+      (TableView<DirectoryTableRow>* const)&mock_directory_view,
+      (TableView<HashTableRow>* const)&mock_hash_view);
+
+  // Assert
+  std::vector<std::string> expected_queries = {"SELECT * FROM Hashes;"};
+  assert(mock_hash_view.queries_executed == expected_queries);
+}
+
+/* ---------------------------- DirectoryTableRow --------------------------- */
+void testDirectoryTableRowEqualOperator() {
+  // Arrange
+  DirectoryTableRow test_one{1, "test", 1};
+  DirectoryTableRow test_two{1, "test", 1};
+
+  // Act
+  bool equality_test = test_one == test_two;
+
+  // Assert
+  assert(equality_test);
+}
+
+/* ---------------------------- HashTableRow --------------------------- */
+void testHashTableRowEqualOperator() {
+  // Arrange
+  HashTableRow test_one{1, "test", NULL};
+  HashTableRow test_two{1, "test", NULL};
+
+  // Act
+  bool equality_test = test_one == test_two;
+
+  // Assert
+  assert(equality_test);
+}
+
+/* ------------------------------ FileHashRows ------------------------------ */
+void testFileHashRowsEqualOperator() {
+  // Arrange
+  FileHashRows test_one{{DirectoryTableRow{1, "test", 1}},
+                        {HashTableRow{1, "test", NULL}}};
+  FileHashRows test_two{{DirectoryTableRow{1, "test", 1}},
+                        {HashTableRow{1, "test", NULL}}};
+
+  // Act
+  bool equality_test = test_one == test_two;
+
+  // Assert
+  assert(equality_test);
+}
+
 /* -------------------------------------------------------------------------- */
 /*                                    Main                                    */
 /* -------------------------------------------------------------------------- */
@@ -278,4 +407,10 @@ int main() {
   testExecuteFDupesCallsCorrectCommands();
   testCheckingTheFileForExistence();
   testExceptionOnNonExistingCache();
+  testLoadDateFromSQLite();
+  testLoadDateFromSQLiteCallsCorrectDirectoryQuery();
+  testLoadDateFromSQLiteCallsCorrectHashQuery();
+  testDirectoryTableRowEqualOperator();
+  testHashTableRowEqualOperator();
+  testFileHashRowsEqualOperator();
 }

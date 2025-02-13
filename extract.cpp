@@ -11,6 +11,22 @@
 
 constexpr SemVer FDUPES_VERSION{2, 0, 0};
 
+bool DirectoryTableRow::operator==(const DirectoryTableRow& rhs) {
+  return rhs.id == id && rhs.name == name && rhs.parent_id == parent_id;
+};
+
+bool HashTableRow::operator==(const HashTableRow& rhs) {
+  return rhs.directory_id == directory_id && rhs.name == name &&
+         rhs.hash == hash;
+};
+
+bool FileHashRows::operator==(const FileHashRows& rhs) {
+  return rhs.directory_rows == directory_rows && rhs.hash_rows == hash_rows;
+}
+
+/* -------------------------------------------------------------------------- */
+/*                            File Executor Service                           */
+/* -------------------------------------------------------------------------- */
 bool SemVer::operator==(const SemVer& rhs) {
   return major == rhs.major && minor == rhs.minor && hotfix == rhs.hotfix;
 }
@@ -100,11 +116,6 @@ ExecuteFileResult ForkExecuteFileCommand::execute(
   return {.return_code = -1, .output = output};
 }
 
-bool FileExistenceCheck::check(const std::string& file_name) {
-  struct stat buffer;
-  return (stat(file_name.c_str(), &buffer) == 0);
-}
-
 SemVer extractVersionFromString(std::string& version_output) {
   std::regex version_regex("(\\d+)\\.(\\d+)\\.(\\d+)");
   std::smatch version_matches;
@@ -117,6 +128,67 @@ SemVer extractVersionFromString(std::string& version_output) {
   throw MissingVersionException("Could not find the version number.");
 }
 
+/* -------------------------------------------------------------------------- */
+/*                           File Existence Service                           */
+/* -------------------------------------------------------------------------- */
+bool FileExistenceCheck::check(const std::string& file_name) {
+  struct stat buffer;
+  return (stat(file_name.c_str(), &buffer) == 0);
+}
+
+/* -------------------------------------------------------------------------- */
+/*                               SQLite Service                               */
+/* -------------------------------------------------------------------------- */
+SQLiteDatabase::SQLiteDatabase(std::string file) {
+  int rc = sqlite3_open(file.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+    throw UnableToConnectError("Unable to conenct to the database.");
+  }
+}
+
+template <class T>
+void SQLiteTableView<T>::prepare(std::string query) {
+  int codde = sqlite3_prepare_v2(db.getDb(), query.c_str(), -1, &res, 0);
+
+  if (codde != SQLITE_OK) {
+    throw UnableToBuildStatementError("Error trying to build the statement.");
+  }
+}
+
+template <class T>
+bool SQLiteTableView<T>::step() {
+  int rc = sqlite3_step(res);
+
+  if (rc == SQLITE_ERROR || rc == SQLITE_MISUSE) {
+    throw UnableToStepError(
+        "You may have forgotten to prepare your statement before stepping!");
+  }
+
+  if (sqlite3_step(res) == SQLITE_DONE) {
+    return false;
+  }
+
+  last_row_fetched = buildTableRow();
+
+  return true;
+}
+
+DirectoryTableRow DirectoryTableView::buildTableRow() {
+  return DirectoryTableRow{.id = sqlite3_column_int(res, 0),
+                           .name = sqlite3_column_text(res, 1),
+                           .parent_id = sqlite3_column_int(res, 3)};
+}
+
+HashTableRow HashTableView::buildTableRow() {
+  return {.directory_id = sqlite3_column_int(res, 0),
+          .name = sqlite3_column_text(res, 1),
+          .hash = sqlite3_column_blob(res, 10)};
+}
+
+/* -------------------------------------------------------------------------- */
+/*                              Process Functions                             */
+/* -------------------------------------------------------------------------- */
 std::string strip(const std::string& input) {
   auto start_it = input.begin();
   auto end_it = input.rbegin();
@@ -184,19 +256,44 @@ void verifyCacheExists(const std::string& file_name,
   }
 }
 
-void extract(const RelativePaths& paths) {
-  ForkExecuteFileCommand executor;
-  FileExistenceCheck checker;
+FileHashRows loadDataFromCache(
+    TableView<DirectoryTableRow>* const directory_table_view,
+    TableView<HashTableRow>* const hash_table_view) {
+  DirectoryTableRow::Rows directory_table_rows{};
+  HashTableRow::Rows hash_table_rows{};
 
+  directory_table_view->prepare("SELECT * FROM Directories;");
+  hash_table_view->prepare("SELECT * FROM Hashes;");
+
+  while (directory_table_view->step()) {
+    directory_table_rows.push_back(directory_table_view->getLastRowFetched());
+  }
+
+  while (hash_table_view->step()) {
+    hash_table_rows.push_back(hash_table_view->getLastRowFetched());
+  }
+
+  return {directory_table_rows, hash_table_rows};
+};
+
+FileHashRows extract(const RelativePaths& paths,
+                     const std::string cache_directory) {
+  // Test and run the FDupes command.
+  ForkExecuteFileCommand executor;
   std::string file_dupes_file = findFDupesCommand(executor);
   checkFDupesVersion(file_dupes_file, executor);
   executeFDupesCacheBuild(file_dupes_file, paths, executor);
-  // How can I make it work with a path relative to home?
-  verifyCacheExists("/home/jack/.cache/fdupes/hash.db", checker);
+
+  // Check if the cache file exists.
+  FileExistenceCheck checker;
+  verifyCacheExists(cache_directory, checker);
+
+  // Load the data from the SQL database.
+  SQLiteDatabase sqlite{cache_directory};
+  DirectoryTableView directory_table_view{cache_directory};
+  HashTableView hash_table_view{cache_directory};
+
+  return loadDataFromCache(
+      (TableView<DirectoryTableRow>* const)&directory_table_view,
+      (TableView<HashTableRow>* const)&hash_table_view);
 }
-
-// Load cache database into sqllite.
-
-// Confirm the correct table exists.
-
-// Extract out of the tables and convert into extract_output.h data structures.

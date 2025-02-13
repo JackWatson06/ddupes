@@ -183,73 +183,204 @@ constexpr uint MD5_DIGEST_LENGTH = 16;
 /*                                Query hash.db                               */
 /* -------------------------------------------------------------------------- */
 
-const std::string CONNECTION_URI = "/home/jack/.cache/fdupes/hash.db";
+// const std::string CONNECTION_URI = "/home/jack/.cache/fdupes/hash.db";
 
-Hash makeHash(const void *blob);
+// Hash makeHash(const void *blob);
+
+// int main() {
+//   DirectoryTableRow::Rows directories{};
+//   HashTableRow::Rows hashes{};
+
+//   sqlite3 *db;
+//   char *err_msg;
+//   sqlite3_stmt *res;
+
+//   int rc = sqlite3_open(CONNECTION_URI.c_str(), &db);
+
+//   if (rc != SQLITE_OK) {
+//     fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
+//     sqlite3_close(db);
+//     return 1;
+//   }
+
+//   /* ---------------------------- Query Directories ----------------------*/
+//   const char *directories_sql = "SELECT * FROM Directories;";
+//   rc = sqlite3_prepare_v2(db, directories_sql, -1, &res, 0);
+
+//   if (rc != SQLITE_OK) {
+//     fprintf(stderr, "Could not prepare the SQLite statement: %s\n",
+//             sqlite3_errmsg(db));
+//     sqlite3_close(db);
+//     return 1;
+//   }
+
+//   int step = 0;
+//   // Move this while loop outside of the class. Mapping should happen inside
+//   // though.
+//   while ((step = sqlite3_step(res)) == SQLITE_ROW) {
+//     directories.push_back(DirectoryTableRow{
+//         .id = (unsigned int)sqlite3_column_int(res, 0),
+//         .name = std::string{(char *)sqlite3_column_text(res, 1)},
+//         .parent_id = std::unique_ptr<unsigned int>{new unsigned int(
+//             sqlite3_column_int(res, 3))},
+//     });
+//   }
+
+//   /* ---------------------------- Query Hashes --------------------------*/
+//   const char *hashes_sql = "SELECT * FROM Hashes;";
+//   rc = sqlite3_prepare_v2(db, hashes_sql, -1, &res, 0);
+
+//   if (rc != SQLITE_OK) {
+//     fprintf(stderr, "Could not prepare the SQLite statement: %s\n",
+//             sqlite3_errmsg(db));
+//     sqlite3_close(db);
+//     return 1;
+//   }
+
+//   step = 0;
+//   while ((step = sqlite3_step(res)) == SQLITE_ROW) {
+//     hashes.push_back(
+//         HashTableRow{.directory_id = (unsigned int)sqlite3_column_int(res,
+//         0),
+//                      .name = std::string{(char *)sqlite3_column_text(res,
+//                      1)}, .hash = makeHash(sqlite3_column_blob(res, 10))});
+//   }
+
+//   sqlite3_finalize(res);
+//   sqlite3_close(db);
+
+//   return 0;
+// }
+
+// Hash makeHash(const void *blob) {
+//   uint8_t *uint_blob = (uint8_t *)blob;
+//   Hash hash{};
+//   for (uint8_t *iter = uint_blob; iter != uint_blob + MD5_DIGEST_LENGTH + 1;
+//        ++iter) {
+//     hash.push_back(*iter);
+//   }
+//   return hash;
+// }
+
+/* -------------------------------------------------------------------------- */
+/*                           Abstracting to Classes                           */
+/* -------------------------------------------------------------------------- */
+
+Hash blobToHash(const void *blob);
+
+class UnableToConnectError : std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
+
+class UnableToBuildStatementError : std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
+
+class UnableToStepError : std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
+
+class SQLiteDatabase {
+ public:
+  SQLiteDatabase(std::string file) {
+    int rc = sqlite3_open(file.c_str(), &db);
+
+    if (rc != SQLITE_OK) {
+      throw UnableToConnectError("Unable to conenct to the database.");
+    }
+  };
+
+  ~SQLiteDatabase() { sqlite3_close(db); };
+
+  sqlite3 *getDb() const { return db; }
+
+ private:
+  sqlite3 *db;
+};
+
+template <class T>
+class SQLiteTableView : TableView<T> {
+ public:
+  SQLiteTableView(const SQLiteDatabase &db) : db(db) {}
+  ~SQLiteTableView() { sqlite3_finalize(res); }
+
+  virtual T buildTableRow() = 0;
+
+  void prepare(std::string query) {
+    int codde = sqlite3_prepare_v2(db.getDb(), query.c_str(), -1, &res, 0);
+
+    if (codde != SQLITE_OK) {
+      throw UnableToBuildStatementError("Error trying to build the statement.");
+    }
+  }
+  bool step() {
+    int rc = sqlite3_step(res);
+
+    if (rc == SQLITE_ERROR || rc == SQLITE_MISUSE) {
+      throw UnableToStepError(
+          "You may have forgotten to prepare your statement before stepping!");
+    }
+
+    if (sqlite3_step(res) == SQLITE_DONE) {
+      return false;
+    }
+
+    last_row_fetched = buildTableRow();
+
+    return true;
+  }
+
+ protected:
+  const SQLiteDatabase db;
+  sqlite3_stmt *res;
+};
+
+class DirectoryTableView : public SQLiteTableView<DirectoryTableRow> {
+ public:
+  using SQLiteTableView<DirectoryTableRow>::SQLiteTableView;
+
+  DirectoryTableRow buildTableRow() {
+    return DirectoryTableRow{.id = sqlite3_column_int(res, 0),
+                             .name = sqlite3_column_text(res, 1),
+                             .parent_id = sqlite3_column_int(res, 3)};
+  }
+};
+
+class HashTableView : public SQLiteTableView<HashTableRow> {
+ public:
+  using SQLiteTableView<HashTableRow>::SQLiteTableView;
+
+  HashTableRow buildTableRow() {
+    return {.directory_id = sqlite3_column_int(res, 0),
+            .name = sqlite3_column_text(res, 1),
+            .hash = sqlite3_column_blob(res, 10)};
+  }
+};
+
+const std::string CONNECTION_URI = "/home/jack/.cache/fdupes/hash.db";
 
 int main() {
   DirectoryTableRow::Rows directories{};
   HashTableRow::Rows hashes{};
 
-  sqlite3 *db;
-  char *err_msg;
-  sqlite3_stmt *res;
-
-  int rc = sqlite3_open(CONNECTION_URI.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-    fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return 1;
-  }
+  SQLiteDatabase sqlite{CONNECTION_URI};
+  DirectoryTableView directory_view{sqlite, "SELECT * FROM Directories;"};
+  HashTableView hash_view{sqlite, "SELECT * FROM Hashes;"};
 
   /* ---------------------------- Query Directories ----------------------*/
-  const char *directories_sql = "SELECT * FROM Directories;";
-  rc = sqlite3_prepare_v2(db, directories_sql, -1, &res, 0);
-
-  if (rc != SQLITE_OK) {
-    fprintf(stderr, "Could not prepare the SQLite statement: %s\n",
-            sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return 1;
-  }
-
-  int step = 0;
-  while ((step = sqlite3_step(res)) == SQLITE_ROW) {
-    directories.push_back(DirectoryTableRow{
-        .id = (unsigned int)sqlite3_column_int(res, 0),
-        .name = std::string{(char *)sqlite3_column_text(res, 1)},
-        .parent_id = std::unique_ptr<unsigned int>{new unsigned int(
-            sqlite3_column_int(res, 3))},
-    });
+  while (directory_view.step()) {
+    directories.push_back(directory_view.getLastRowFetched());
   }
 
   /* ---------------------------- Query Hashes --------------------------*/
-  const char *hashes_sql = "SELECT * FROM Hashes;";
-  rc = sqlite3_prepare_v2(db, hashes_sql, -1, &res, 0);
-
-  if (rc != SQLITE_OK) {
-    fprintf(stderr, "Could not prepare the SQLite statement: %s\n",
-            sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return 1;
+  while (hash_view.step()) {
+    hashes.push_back(hash_view.getLastRowFetched());
   }
-
-  step = 0;
-  while ((step = sqlite3_step(res)) == SQLITE_ROW) {
-    hashes.push_back(
-        HashTableRow{.directory_id = (unsigned int)sqlite3_column_int(res, 0),
-                     .name = std::string{(char *)sqlite3_column_text(res, 1)},
-                     .hash = makeHash(sqlite3_column_blob(res, 10))});
-  }
-
-  sqlite3_finalize(res);
-  sqlite3_close(db);
 
   return 0;
 }
 
-Hash makeHash(const void *blob) {
+Hash blobToHash(const void *blob) {
   uint8_t *uint_blob = (uint8_t *)blob;
   Hash hash{};
   for (uint8_t *iter = uint_blob; iter != uint_blob + MD5_DIGEST_LENGTH + 1;

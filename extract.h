@@ -1,8 +1,15 @@
-#include <stdexcept>
-#include <string>
-#include <system_error>
-#include <vector>
+#include <sqlite3.h>
 
+#include <stdexcept>
+#include <system_error>
+
+#include "extract_output.h"
+
+typedef std::vector<std::string> RelativePaths;
+
+/* -------------------------------------------------------------------------- */
+/*                            File Executor Service                           */
+/* -------------------------------------------------------------------------- */
 class NoFDupesException : std::runtime_error {
   using std::runtime_error::runtime_error;
 };
@@ -50,13 +57,85 @@ class ForkExecuteFileCommand {
                                     const std::vector<std::string> args);
 };
 
+/* -------------------------------------------------------------------------- */
+/*                           File Existence Service                           */
+/* -------------------------------------------------------------------------- */
 class FileExistenceCheck {
  public:
   virtual bool check(const std::string& file_name);
 };
 
-typedef std::vector<std::string> RelativePaths;
+/* -------------------------------------------------------------------------- */
+/*                               SQLite Service                               */
+/* -------------------------------------------------------------------------- */
+template <class T>
+class TableView {
+ public:
+  virtual void prepare(std::string query) = 0;
+  virtual bool step() = 0;
+  T getLastRowFetched() const { return last_row_fetched; };
 
+ protected:
+  T last_row_fetched;
+};
+
+class UnableToConnectError : std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
+
+class UnableToBuildStatementError : std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
+
+class UnableToStepError : std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
+
+class SQLiteDatabase {
+ public:
+  SQLiteDatabase(std::string file) {};
+
+  ~SQLiteDatabase() { sqlite3_close(db); };
+
+  sqlite3* getDb() const { return db; }
+
+ private:
+  sqlite3* db;
+};
+
+template <class T>
+class SQLiteTableView : public TableView<T> {
+ public:
+  SQLiteTableView(const SQLiteDatabase& db) : db(db) {}
+  ~SQLiteTableView() { sqlite3_finalize(res); }
+
+  virtual T buildTableRow() = 0;
+
+  void prepare(std::string query);
+  bool step();
+
+ protected:
+  const SQLiteDatabase db;
+  sqlite3_stmt* res;
+};
+
+class DirectoryTableView : public SQLiteTableView<DirectoryTableRow> {
+ public:
+  using SQLiteTableView<DirectoryTableRow>::SQLiteTableView;
+
+  DirectoryTableRow buildTableRow();
+};
+
+class HashTableView : public SQLiteTableView<HashTableRow> {
+ public:
+  using SQLiteTableView<HashTableRow>::SQLiteTableView;
+
+  HashTableRow buildTableRow();
+};
+
+/* -------------------------------------------------------------------------- */
+/*                              Process Functions                             */
+/* -------------------------------------------------------------------------- */
 std::string findFDupesCommand(ForkExecuteFileCommand& executor);
 void checkFDupesVersion(std::string fdupes_file,
                         ForkExecuteFileCommand& executor);
@@ -67,4 +146,9 @@ void executeFDupesCacheBuild(std::string fdupes_file,
                              ForkExecuteFileCommand& executor);
 void verifyCacheExists(const std::string& file_name,
                        FileExistenceCheck& checker);
-void extract(const RelativePaths& paths);
+FileHashRows loadDataFromCache(
+    TableView<DirectoryTableRow>* const directory_table_view,
+    TableView<HashTableRow>* const hash_table_view);
+
+FileHashRows extract(const RelativePaths& paths,
+                     const std::string cache_directory);

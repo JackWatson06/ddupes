@@ -17,6 +17,9 @@ continue up the tree until I find a unique directroy.
 - When I find a unique directory then don't navigate up to parent and clip this
 branch off the tree and store the full path of the duplicate directory or file.
 - Store the duplicate directories in a grouped result set.
+- Since a function could call delete on an object the desctuctors are part of
+the objects interface A function does not construct an object of the passed in
+type. The object will already be constructed. When it's passed in.
 */
 
 /**
@@ -29,6 +32,8 @@ wonderful.
 pointer for the parent_id.
 - How can we get the home directory of the current user when finding the hash.db
 file.
+- Integration tests with the SQLLite query classes.
+- Improve error handling for sqlite
 */
 
 /**
@@ -71,6 +76,7 @@ _g|460096331|460096331|ï¿½Eï¿½ï¿½#,G.ï¿½;ï¿½ï¿½ï¿½ï¿½P|4096|ï¿½Eï¿½ï¿½#,G.ï¿½;ï¿
  */
 
 int main() {
-  extract({"testing_dirs/dir1", "testing_dirs/dir2"});
+  extract({"testing_dirs/dir1", "testing_dirs/dir2"},
+          "/home/jack/.cache/fdupes/hash.db");
   return 0;
 }
