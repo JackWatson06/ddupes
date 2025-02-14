@@ -93,7 +93,7 @@ class UnableToStepError : std::runtime_error {
 
 class SQLiteDatabase {
  public:
-  SQLiteDatabase(std::string file) {};
+  SQLiteDatabase(std::string file);
 
   ~SQLiteDatabase() { sqlite3_close(db); };
 

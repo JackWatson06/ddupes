@@ -84,17 +84,29 @@ DirectoryRowIdMap buildDirectoryRowIdMap(
   return directory_id_map;
 }
 
+Hash blobToHash(const void *blob) {
+  uint8_t *uint_blob = (uint8_t *)blob;
+  Hash hash{};
+  for (uint8_t *iter = uint_blob; iter != uint_blob + MD5_DIGEST_LENGTH;
+       ++iter) {
+    hash.push_back(*iter);
+  }
+  return hash;
+}
+
 DirectoryNode buildFileNodeBranch(const HashTableRow &hash_result,
                                   const DirectoryRowIdMap &directory_id_map) {
   const DirectoryTableRow *next_directory_pointer =
       directory_id_map.at(hash_result.directory_id);
-  DirectoryNode root_node{next_directory_pointer->name,
-                          {FileNode{hash_result.name, hash_result.hash}}};
+  DirectoryNode root_node{std::string((char *)next_directory_pointer->name),
+                          {FileNode{std::string((char *)hash_result.name),
+                                    blobToHash(hash_result.hash)}}};
 
-  while (next_directory_pointer->parent_id != nullptr) {
+  while (next_directory_pointer->parent_id != -1) {
     next_directory_pointer =
-        directory_id_map.at(*next_directory_pointer->parent_id);
-    root_node = DirectoryNode{next_directory_pointer->name, {}, {root_node}};
+        directory_id_map.at(next_directory_pointer->parent_id);
+    root_node = DirectoryNode{
+        std::string((char *)next_directory_pointer->name), {}, {root_node}};
   }
 
   return root_node;

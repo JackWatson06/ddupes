@@ -271,14 +271,14 @@ class MockDatabaseView : public TableView<T> {
   std::vector<std::string> queries_executed;
 
   MockDatabaseView(std::vector<StepResults<T>> step_outputs)
-      : step_results(), queries_executed({}) {};
+      : step_results(step_outputs), queries_executed({}) {};
 
   void prepare(std::string query) { queries_executed.push_back(query); }
 
   bool step() {
-    auto step_result = step_results.back();
-    step_results.pop_back();
-    last_row_fetched = step_result.last_row_fetch_result;
+    auto step_result = step_results.front();
+    step_results.erase(step_results.begin());
+    TableView<T>::last_row_fetched = step_result.last_row_fetch_result;
     return step_result.done;
   }
 
@@ -290,12 +290,14 @@ typedef StepResults<DirectoryTableRow> DirectoryTableStep;
 typedef StepResults<HashTableRow> HashTableStep;
 
 const std::vector<StepResults<DirectoryTableRow>> mock_directory_view_responses{
-    DirectoryTableStep{true, {1, "test", 1}},
-    DirectoryTableStep{false, {1, "test_two", 1}}};
+    DirectoryTableStep{true, {1, (puchar) "test", 1}},
+    DirectoryTableStep{true, {1, (puchar) "test_two", 1}},
+    DirectoryTableStep{false, {}}};
 
 const std::vector<StepResults<HashTableRow>> mock_hash_view_responses = {
-    HashTableStep{true, {1, "test", NULL}},
-    HashTableStep{false, {1, "test_two", NULL}}};
+    HashTableStep{true, {1, (puchar) "test", NULL}},
+    HashTableStep{true, {1, (puchar) "test_two", NULL}},
+    HashTableStep{false, {}}};
 
 void testLoadDateFromSQLite() {
   // Arrange
@@ -309,9 +311,10 @@ void testLoadDateFromSQLite() {
       (TableView<HashTableRow>* const)&mock_hash_view);
 
   // Assert
-  FileHashRows expected_rows{
-      {DirectoryTableRow{1, "test", 1}, DirectoryTableRow{1, "test_two", 1}},
-      {HashTableRow{1, "test", NULL}, HashTableRow{1, "test_two", NULL}}};
+  FileHashRows expected_rows{{DirectoryTableRow{1, (puchar) "test", 1},
+                              DirectoryTableRow{1, (puchar) "test_two", 1}},
+                             {HashTableRow{1, (puchar) "test", NULL},
+                              HashTableRow{1, (puchar) "test_two", NULL}}};
   assert(actual_rows == expected_rows);
 }
 
@@ -350,8 +353,8 @@ void testLoadDateFromSQLiteCallsCorrectHashQuery() {
 /* ---------------------------- DirectoryTableRow --------------------------- */
 void testDirectoryTableRowEqualOperator() {
   // Arrange
-  DirectoryTableRow test_one{1, "test", 1};
-  DirectoryTableRow test_two{1, "test", 1};
+  DirectoryTableRow test_one{1, (puchar) "test", 1};
+  DirectoryTableRow test_two{1, (puchar) "test", 1};
 
   // Act
   bool equality_test = test_one == test_two;
@@ -363,8 +366,8 @@ void testDirectoryTableRowEqualOperator() {
 /* ---------------------------- HashTableRow --------------------------- */
 void testHashTableRowEqualOperator() {
   // Arrange
-  HashTableRow test_one{1, "test", NULL};
-  HashTableRow test_two{1, "test", NULL};
+  HashTableRow test_one{1, (puchar) "test", NULL};
+  HashTableRow test_two{1, (puchar) "test", NULL};
 
   // Act
   bool equality_test = test_one == test_two;
@@ -376,10 +379,10 @@ void testHashTableRowEqualOperator() {
 /* ------------------------------ FileHashRows ------------------------------ */
 void testFileHashRowsEqualOperator() {
   // Arrange
-  FileHashRows test_one{{DirectoryTableRow{1, "test", 1}},
-                        {HashTableRow{1, "test", NULL}}};
-  FileHashRows test_two{{DirectoryTableRow{1, "test", 1}},
-                        {HashTableRow{1, "test", NULL}}};
+  FileHashRows test_one{{DirectoryTableRow{1, (puchar) "test", 1}},
+                        {HashTableRow{1, (puchar) "test", NULL}}};
+  FileHashRows test_two{{DirectoryTableRow{1, (puchar) "test", 1}},
+                        {HashTableRow{1, (puchar) "test", NULL}}};
 
   // Act
   bool equality_test = test_one == test_two;

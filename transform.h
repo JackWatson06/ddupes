@@ -77,6 +77,7 @@ int countShortestVector(const std::vector<T> &vectors);
 // Building Directory Map
 DirectoryRowIdMap buildDirectoryRowIdMap(
     const DirectoryTableRow::Rows &directory_table_rows);
+Hash blobToHash(const void *blob);
 DirectoryNode buildFileNodeBranch(const HashTableRow &hash_result,
                                   const DirectoryRowIdMap &directory_results);
 DirectoryNode buildDirectoryTree(const HashTableRow::Rows &hash_results,

@@ -6,8 +6,6 @@
 /* -------------------------------------------------------------------------- */
 /*                                    Mocks                                   */
 /* -------------------------------------------------------------------------- */
-const Hash TEST_HASH{255, 255, 255, 255, 255, 255, 255, 255,
-                     255, 255, 255, 255, 255, 255, 255, 255};
 
 bool compareHashToDuplicateNotes(DuplicatePathsMap& one,
                                  DuplicatePathsMap& two) {
@@ -24,6 +22,33 @@ bool compareHashToDuplicateNotes(DuplicatePathsMap& one,
   }
   return true;
 }
+
+Hash uniqueTestHash(uint8_t first_byte = 255) {
+  Hash full_hash = {first_byte, 255, 255, 255, 255, 255, 255, 255,
+                    255,        255, 255, 255, 255, 255, 255, 255};
+  return full_hash;
+}
+
+std::array<uint8_t, 16> uniqueTestBlob(uint8_t first_byte = 255) {
+  std::array<uint8_t, 16> blob = {first_byte, 255, 255, 255, 255, 255,
+                                  255,        255, 255, 255, 255, 255,
+                                  255,        255, 255, 255};
+  return blob;
+}
+
+// void* (void*) uniqueTestBlob(uint8_t first_byte = 255) {
+//   uint8_t* blob =
+//       new uint8_t[16];
+//   return (void*)blob;
+// }
+
+// void freeUniqueBlob(const void* blob) { delete[] (uint8_t*)blob; }
+
+// void freeHashTableRows(const HashTableRow::Rows& hash_table_rows) {
+//   for (const HashTableRow row : hash_table_rows) {
+//     freeUniqueBlob(row.hash);
+//   }
+// }
 
 /* -------------------------------------------------------------------------- */
 /*                                    Tests                                   */
@@ -58,7 +83,7 @@ void testCountingVectorsWithLengthZeroReturnsZero() {
 /* ------------------------------- computeHash ------------------------------ */
 void testHashingAListOfHashes() {
   // Arrange
-  Hashes test_hashes{TEST_HASH, TEST_HASH, TEST_HASH};
+  Hashes test_hashes{uniqueTestHash(), uniqueTestHash(), uniqueTestHash()};
 
   // Act
   Hash actual_hash = computeHash(test_hashes);
@@ -71,8 +96,8 @@ void testHashingAListOfHashes() {
 
 void testTwoHashesAreDifferent() {
   // Arrange
-  Hashes test_one_hashes{TEST_HASH, TEST_HASH, TEST_HASH};
-  Hashes test_two_hashes{TEST_HASH, TEST_HASH};
+  Hashes test_one_hashes{uniqueTestHash(), uniqueTestHash(), uniqueTestHash()};
+  Hashes test_two_hashes{uniqueTestHash(), uniqueTestHash()};
 
   // Act
   Hash actual_hash_one = computeHash(test_one_hashes);
@@ -85,11 +110,11 @@ void testTwoHashesAreDifferent() {
 /* ------------------------- buildDirectoryRowIdMap ------------------------- */
 void testBuildingDirectoryRowIdMap() {
   const DirectoryTableRow::Rows test_directory_results = {
-      {1, "/", nullptr},
-      {2, "home", new unsigned int(1)},
-      {3, "dir1", new unsigned int(2)},
-      {4, "dir2", new unsigned int(2)},
-      {5, "sub_dir", new unsigned int(4)}};
+      {1, (puchar) "/", -1},
+      {2, (puchar) "home", 1},
+      {3, (puchar) "dir1", 2},
+      {4, (puchar) "dir2", 2},
+      {5, (puchar) "sub_dir", 4}};
 
   // Act
   DirectoryRowIdMap actual_directory_result_id_map =
@@ -102,32 +127,27 @@ void testBuildingDirectoryRowIdMap() {
       {5, &test_directory_results[4]},
   };
   assert(expected_directory_result_id_map == actual_directory_result_id_map);
-
-  // Cleanup
-  for (const DirectoryTableRow test_directory_result : test_directory_results) {
-    delete test_directory_result.parent_id;
-  }
 }
 
 /* --------------------------- buildDirectoryTree --------------------------- */
 void testDuplicateDirectoryTreeCreation() {
   // Arrange
   const DirectoryTableRow::Rows test_directory_results = {
-      {1, "/", nullptr},
-      {2, "home", new unsigned int(1)},
-      {3, "dir1", new unsigned int(2)},
-      {4, "dir2", new unsigned int(2)},
-      {5, "sub_dir", new unsigned int(4)}};
+      {1, (puchar) "/", -1},
+      {2, (puchar) "home", 1},
+      {3, (puchar) "dir1", 2},
+      {4, (puchar) "dir2", 2},
+      {5, (puchar) "sub_dir", 4}};
   const DirectoryRowIdMap test_directory_results_id_map{
       {1, &test_directory_results[0]}, {2, &test_directory_results[1]},
       {3, &test_directory_results[2]}, {4, &test_directory_results[3]},
       {5, &test_directory_results[4]},
   };
   const HashTableRow::Rows test_hash_results = {
-      {5, "testing1.txt", Hash{128, 255, 255}},
-      {4, "testing2.txt", Hash{196, 255, 255}},
-      {4, "testing3.txt", Hash{200, 255, 255}},
-      {3, "testing4.txt", Hash{255, 255, 255}}};
+      {5, (puchar) "testing1.txt", (void*)uniqueTestBlob(128).begin()},
+      {4, (puchar) "testing2.txt", (void*)uniqueTestBlob(196).begin()},
+      {4, (puchar) "testing3.txt", (void*)uniqueTestBlob(200).begin()},
+      {3, (puchar) "testing4.txt", (void*)uniqueTestBlob(255).begin()}};
 
   // Act
   DirectoryNode actual_directory_tree =
@@ -143,29 +163,24 @@ void testDuplicateDirectoryTreeCreation() {
           {
               DirectoryNode{"dir2",
                             {
-                                FileNode{"testing3.txt", Hash{200, 255, 255}},
-                                FileNode{"testing2.txt", Hash{196, 255, 255}},
+                                FileNode{"testing3.txt", uniqueTestHash(200)},
+                                FileNode{"testing2.txt", uniqueTestHash(196)},
                             },
                             {DirectoryNode{"sub_dir",
                                            {FileNode{"testing1.txt",
-                                                     Hash{128, 255, 255}}}}}},
+                                                     uniqueTestHash(128)}}}}},
               DirectoryNode{
-                  "dir1", {FileNode{"testing4.txt", Hash{255, 255, 255}}}, {}},
+                  "dir1", {FileNode{"testing4.txt", uniqueTestHash(255)}}, {}},
           }}}};
 
   assert(actual_directory_tree == expected_directory_tree);
-
-  // Cleanup
-  for (const DirectoryTableRow test_directory_result : test_directory_results) {
-    delete test_directory_result.parent_id;
-  }
 }
 
 void testWeGetEmptyDirectoryTreeWithEmptyDirectoryRows() {
   // Arrange
   const DirectoryRowIdMap test_directory_results = {};
   const HashTableRow::Rows test_hash_results = {
-      {5, "testing1.txt", Hash{128, 255, 255}},
+      {5, (puchar) "testing1.txt", (void*)uniqueTestBlob(128).begin()},
   };
 
   // Act
@@ -179,7 +194,7 @@ void testWeGetEmptyDirectoryTreeWithEmptyDirectoryRows() {
 void testWeGetEmptyDirectoryTreeWithEmptyHashRows() {
   // Arrange
   const DirectoryTableRow::Rows test_directory_results = {
-      {2, "home", new unsigned int(1)},
+      {2, (puchar) "home", 1},
   };
   const DirectoryRowIdMap test_directory_results_id_map{
       {1, &test_directory_results[0]},
@@ -192,26 +207,36 @@ void testWeGetEmptyDirectoryTreeWithEmptyHashRows() {
 
   // Assert
   assert(actual_directory_tree == DirectoryNode());
-  for (const DirectoryTableRow test_directory_result : test_directory_results) {
-    delete test_directory_result.parent_id;
-  }
+}
+
+/* ------------------------------- blobToHash ------------------------------- */
+void testBlobToHash() {
+  // Arrange
+  void* test_blob = (void*)uniqueTestBlob().begin();
+
+  // Act
+  Hash actual_hash = blobToHash((void*)test_blob);
+
+  // Assert
+  assert(actual_hash == uniqueTestHash());
 }
 
 /* --------------------------- buildFileNodeBranch -------------------------- */
 void testBuildingSingleFileNodeBranch() {
   // Arrange
   const DirectoryTableRow::Rows test_directory_results = {
-      {1, "/", nullptr},
-      {2, "home", new unsigned int(1)},
-      {3, "dir1", new unsigned int(2)},
-      {4, "sub_dir", new unsigned int(3)}};
+      {1, (puchar) "/", -1},
+      {2, (puchar) "home", 1},
+      {3, (puchar) "dir1", 2},
+      {4, (puchar) "sub_dir", 3}};
   const DirectoryRowIdMap test_directory_results_id_map{
       {1, &test_directory_results[0]},
       {2, &test_directory_results[1]},
       {3, &test_directory_results[2]},
       {4, &test_directory_results[3]},
   };
-  const HashTableRow test_hash_result{4, "testing1.txt", Hash{128, 255, 255}};
+  const HashTableRow test_hash_result{4, (puchar) "testing1.txt",
+                                      (void*)uniqueTestBlob(128).begin()};
 
   // Act
   DirectoryNode actual_directory_tree =
@@ -229,15 +254,10 @@ void testBuildingSingleFileNodeBranch() {
                             {},
                             {DirectoryNode{"sub_dir",
                                            {FileNode{"testing1.txt",
-                                                     Hash{128, 255, 255}}}}}},
+                                                     uniqueTestHash(128)}}}}},
           }}}};
 
   assert(expected_directory_tree == actual_directory_tree);
-
-  // Cleanup
-  for (const DirectoryTableRow test_directory_result : test_directory_results) {
-    delete test_directory_result.parent_id;
-  }
 }
 
 /* ------------------------- mergeTwoDirectoryNodes ------------------------- */
@@ -248,13 +268,13 @@ void testMergingTwoBranches() {
       {},
       {DirectoryNode{
           "home",
-          {FileNode{"testing1.txt", Hash{128, 255, 255}}},
+          {FileNode{"testing1.txt", uniqueTestHash(128)}},
           {
               DirectoryNode{"dir1",
                             {},
                             {DirectoryNode{"sub_dir",
                                            {FileNode{"testing1.txt",
-                                                     Hash{128, 255, 255}}}}}},
+                                                     uniqueTestHash(128)}}}}},
           }}}};
 
   DirectoryNode testing_directory_tree_two{
@@ -265,13 +285,13 @@ void testMergingTwoBranches() {
           {},
           {
               DirectoryNode{"dir1",
-                            {{FileNode{"testing1.txt", Hash{128, 255, 255}}}},
+                            {{FileNode{"testing1.txt", uniqueTestHash(128)}}},
                             {}},
               DirectoryNode{"dir2",
                             {},
                             {DirectoryNode{"sub_dir",
                                            {FileNode{"testing1.txt",
-                                                     Hash{128, 255, 255}}}}}},
+                                                     uniqueTestHash(128)}}}}},
           }}}};
 
   // Act
@@ -284,18 +304,18 @@ void testMergingTwoBranches() {
       {},
       {DirectoryNode{
           "home",
-          {FileNode{"testing1.txt", Hash{128, 255, 255}}},
+          {FileNode{"testing1.txt", uniqueTestHash(128)}},
           {DirectoryNode{"dir1",
-                         {FileNode{"testing1.txt", Hash{128, 255, 255}}},
+                         {FileNode{"testing1.txt", uniqueTestHash(128)}},
                          {DirectoryNode{
                              "sub_dir",
-                             {FileNode{"testing1.txt", Hash{128, 255, 255}}}}}},
+                             {FileNode{"testing1.txt", uniqueTestHash(128)}}}}},
            {
                DirectoryNode{"dir2",
                              {},
                              {DirectoryNode{"sub_dir",
                                             {FileNode{"testing1.txt",
-                                                      Hash{128, 255, 255}}}}}},
+                                                      uniqueTestHash(128)}}}}},
            }}}}};
 
   assert(expected_directory_tree == actual_directory_tree);
@@ -321,13 +341,13 @@ void testWeGetEmptyDirectoryTreeWhenMergingTreesWithoutSameRoot() {
 void testMergingFileLists() {
   // Arrange
   FileNode::Files test_files_one = {
-      FileNode{"testing1.txt", Hash{128, 255, 255}},
-      FileNode{"testing2.txt", Hash{128, 255, 255}},
+      FileNode{"testing1.txt", uniqueTestHash(128)},
+      FileNode{"testing2.txt", uniqueTestHash(128)},
   };
 
   FileNode::Files test_files_two = {
-      FileNode{"testing1.txt", Hash{128, 255, 255}},
-      FileNode{"testing3.txt", Hash{128, 255, 255}},
+      FileNode{"testing1.txt", uniqueTestHash(128)},
+      FileNode{"testing3.txt", uniqueTestHash(128)},
   };
 
   // Act
@@ -336,9 +356,9 @@ void testMergingFileLists() {
 
   // Assert
   FileNode::Files expected_files{
-      FileNode{"testing1.txt", Hash{128, 255, 255}},
-      FileNode{"testing2.txt", Hash{128, 255, 255}},
-      FileNode{"testing3.txt", Hash{128, 255, 255}},
+      FileNode{"testing1.txt", uniqueTestHash(128)},
+      FileNode{"testing2.txt", uniqueTestHash(128)},
+      FileNode{"testing3.txt", uniqueTestHash(128)},
   };
 
   assert(actual_files == expected_files);
@@ -349,25 +369,25 @@ void testMergingDirectories() {
   // Arrange
   DirectoryNode::Directories test_directories_one = {
       DirectoryNode{
-          "dir1", {FileNode{"testing1.txt", Hash{128, 255, 255}}}, {}},
+          "dir1", {FileNode{"testing1.txt", uniqueTestHash(128)}}, {}},
       DirectoryNode{
           "dir2",
           {},
           {DirectoryNode{"sub_dir",
-                         {FileNode{"testing1.txt", Hash{128, 255, 255}}}}}},
+                         {FileNode{"testing1.txt", uniqueTestHash(128)}}}}},
   };
 
   DirectoryNode::Directories test_directories_two = {
       DirectoryNode{
           "dir2",
-          {FileNode{"testing1.txt", Hash{128, 255, 255}}},
+          {FileNode{"testing1.txt", uniqueTestHash(128)}},
           {DirectoryNode{"sub_dir",
-                         {FileNode{"testing2.txt", Hash{128, 255, 255}}}}}},
+                         {FileNode{"testing2.txt", uniqueTestHash(128)}}}}},
       DirectoryNode{
           "dir3",
           {},
           {DirectoryNode{"sub_dir",
-                         {FileNode{"testing1.txt", Hash{128, 255, 255}}}}}},
+                         {FileNode{"testing1.txt", uniqueTestHash(128)}}}}},
   };
 
   // Act
@@ -377,18 +397,18 @@ void testMergingDirectories() {
   // Assert
   DirectoryNode::Directories expected_directories = {
       DirectoryNode{
-          "dir1", {FileNode{"testing1.txt", Hash{128, 255, 255}}}, {}},
+          "dir1", {FileNode{"testing1.txt", uniqueTestHash(128)}}, {}},
       DirectoryNode{
           "dir2",
-          {FileNode{"testing1.txt", Hash{128, 255, 255}}},
+          {FileNode{"testing1.txt", uniqueTestHash(128)}},
           {DirectoryNode{"sub_dir",
-                         {FileNode{"testing1.txt", Hash{128, 255, 255}},
-                          FileNode{"testing2.txt", Hash{128, 255, 255}}}}}},
+                         {FileNode{"testing1.txt", uniqueTestHash(128)},
+                          FileNode{"testing2.txt", uniqueTestHash(128)}}}}},
       DirectoryNode{
           "dir3",
           {},
           {DirectoryNode{"sub_dir",
-                         {FileNode{"testing1.txt", Hash{128, 255, 255}}}}}},
+                         {FileNode{"testing1.txt", uniqueTestHash(128)}}}}},
   };
 
   assert(actual_directories == expected_directories);
@@ -399,22 +419,22 @@ void testHashNodeEqualOperator() {
   // Arrange
   const HashNode test_hash_node_one = {
       "src",
-      Hash{255, 255, 255},
-      {HashNode{"testing1.txt", Hash{255, 255, 255}},
+      uniqueTestHash(255),
+      {HashNode{"testing1.txt", uniqueTestHash(255)},
        HashNode{
            "app",
-           Hash{255, 255, 255},
-           {HashNode{"testing1.txt", Hash{255, 255, 255}}},
+           uniqueTestHash(255),
+           {HashNode{"testing1.txt", uniqueTestHash(255)}},
        }}};
 
   const HashNode test_hash_node_two = {
       "src",
-      Hash{255, 255, 255},
-      {HashNode{"testing1.txt", Hash{255, 255, 255}},
+      uniqueTestHash(255),
+      {HashNode{"testing1.txt", uniqueTestHash(255)},
        HashNode{
            "app",
-           Hash{255, 255, 255},
-           {HashNode{"testing1.txt", Hash{255, 255, 255}}},
+           uniqueTestHash(255),
+           {HashNode{"testing1.txt", uniqueTestHash(255)}},
        }}};
 
   // Act
@@ -427,9 +447,9 @@ void testHashNodeEqualOperator() {
 /* -------------------------------- FileNode -------------------------------- */
 void testFileNodeEqualOperator() {
   // Arrange
-  const FileNode test_file_node_one{"testing1.txt", Hash{255, 255, 255}};
+  const FileNode test_file_node_one{"testing1.txt", uniqueTestHash(255)};
 
-  const FileNode test_file_node_two{"testing1.txt", Hash{255, 255, 255}};
+  const FileNode test_file_node_two{"testing1.txt", uniqueTestHash(255)};
 
   // Act
   bool equality_test = test_file_node_one == test_file_node_two;
@@ -443,15 +463,15 @@ void testDirectoryNodeEqualOperator() {
   // Arrange
   const DirectoryNode test_directory_node_one{
       "dir2",
-      {FileNode{"testing1.txt", Hash{255, 255, 255}}},
+      {FileNode{"testing1.txt", uniqueTestHash(255)}},
       {DirectoryNode{"sub_dir",
-                     {FileNode{"testing2.txt", Hash{255, 255, 255}}}}}};
+                     {FileNode{"testing2.txt", uniqueTestHash(255)}}}}};
 
   const DirectoryNode test_directory_node_two{
       "dir2",
-      {FileNode{"testing1.txt", Hash{255, 255, 255}}},
+      {FileNode{"testing1.txt", uniqueTestHash(255)}},
       {DirectoryNode{"sub_dir",
-                     {FileNode{"testing2.txt", Hash{255, 255, 255}}}}}};
+                     {FileNode{"testing2.txt", uniqueTestHash(255)}}}}};
 
   // Act
   bool equality_result = test_directory_node_one == test_directory_node_two;
@@ -464,9 +484,10 @@ void testDirectoryNodeEqualOperator() {
 void testCalculatingHashFromHashNodes() {
   // Arrange
   HashNode::HashedNodes test_hash_nodes = {
-      HashNode{"sub-dir", TEST_HASH}, HashNode{"src", TEST_HASH},
-      FileNode{"testing1.txt", TEST_HASH}, FileNode{"testing2.txt", TEST_HASH},
-      FileNode{"testing3.txt", TEST_HASH}};
+      HashNode{"sub-dir", uniqueTestHash()}, HashNode{"src", uniqueTestHash()},
+      FileNode{"testing1.txt", uniqueTestHash()},
+      FileNode{"testing2.txt", uniqueTestHash()},
+      FileNode{"testing3.txt", uniqueTestHash()}};
 
   // Act
   Hash actual_hash = computeHashNodesHash(test_hash_nodes);
@@ -480,17 +501,18 @@ void testCalculatingHashFromHashNodes() {
 /* ----------------------------- buildHashNodes ----------------------------- */
 void testConvertingFileNodesToHashNodes() {
   // Arrange
-  FileNode::Files test_files = {FileNode{"testing1.txt", TEST_HASH},
-                                FileNode{"testing2.txt", TEST_HASH},
-                                FileNode{"testing3.txt", TEST_HASH}};
+  FileNode::Files test_files = {FileNode{"testing1.txt", uniqueTestHash()},
+                                FileNode{"testing2.txt", uniqueTestHash()},
+                                FileNode{"testing3.txt", uniqueTestHash()}};
 
   // Act
   HashNode::HashedNodes actual_hash_nodes = buildHashNodes(test_files);
 
   // Assert
   HashNode::HashedNodes expected_hash_nodes = {
-      HashNode{"testing1.txt", TEST_HASH}, HashNode{"testing2.txt", TEST_HASH},
-      HashNode{"testing3.txt", TEST_HASH}};
+      HashNode{"testing1.txt", uniqueTestHash()},
+      HashNode{"testing2.txt", uniqueTestHash()},
+      HashNode{"testing3.txt", uniqueTestHash()}};
   assert(expected_hash_nodes == actual_hash_nodes);
 }
 
@@ -499,8 +521,9 @@ void testConvertingLeafDirectoryNodeToHashNode() {
   // Arrange
   DirectoryNode test_directory_node = {
       "src",
-      {FileNode{"testing1.txt", TEST_HASH}, FileNode{"testing2.txt", TEST_HASH},
-       FileNode{"testing3.txt", TEST_HASH}}};
+      {FileNode{"testing1.txt", uniqueTestHash()},
+       FileNode{"testing2.txt", uniqueTestHash()},
+       FileNode{"testing3.txt", uniqueTestHash()}}};
 
   // Act
   HashNode actual_directory_hash_node = buildHashNode(test_directory_node);
@@ -509,8 +532,9 @@ void testConvertingLeafDirectoryNodeToHashNode() {
   HashNode expected_directory_hash_node = HashNode{
       "src",
       Hash{91, 83, 0, 15, 77, 131, 26, 67, 48, 112, 248, 0, 4, 38, 41, 16},
-      {HashNode{"testing1.txt", TEST_HASH}, HashNode{"testing2.txt", TEST_HASH},
-       HashNode{"testing3.txt", TEST_HASH}}};
+      {HashNode{"testing1.txt", uniqueTestHash()},
+       HashNode{"testing2.txt", uniqueTestHash()},
+       HashNode{"testing3.txt", uniqueTestHash()}}};
   assert(actual_directory_hash_node == expected_directory_hash_node);
 }
 
@@ -518,10 +542,11 @@ void testConvertingNestedDirectoryNodeToHashNode() {
   // Arrange
   DirectoryNode test_directory_node = {
       "src",
-      {FileNode{"testing1.txt", TEST_HASH}, FileNode{"testing2.txt", TEST_HASH},
-       FileNode{"testing3.txt", TEST_HASH}},
-      {DirectoryNode{"app", {FileNode{"testing1.txt", TEST_HASH}}},
-       DirectoryNode{"test", {FileNode{"testing1.txt", TEST_HASH}}}}};
+      {FileNode{"testing1.txt", uniqueTestHash()},
+       FileNode{"testing2.txt", uniqueTestHash()},
+       FileNode{"testing3.txt", uniqueTestHash()}},
+      {DirectoryNode{"app", {FileNode{"testing1.txt", uniqueTestHash()}}},
+       DirectoryNode{"test", {FileNode{"testing1.txt", uniqueTestHash()}}}}};
 
   // Act
   HashNode actual_directory_hash_node = buildHashNode(test_directory_node);
@@ -531,16 +556,17 @@ void testConvertingNestedDirectoryNodeToHashNode() {
       "src",
       Hash{123, 92, 18, 77, 21, 122, 197, 183, 213, 222, 95, 218, 111, 255, 61,
            33},
-      {HashNode{"testing1.txt", TEST_HASH}, HashNode{"testing2.txt", TEST_HASH},
-       HashNode{"testing3.txt", TEST_HASH},
+      {HashNode{"testing1.txt", uniqueTestHash()},
+       HashNode{"testing2.txt", uniqueTestHash()},
+       HashNode{"testing3.txt", uniqueTestHash()},
        HashNode{"app",
                 Hash{141, 121, 203, 201, 164, 236, 221, 225, 18, 252, 145, 186,
                      98, 91, 19, 194},
-                {HashNode{"testing1.txt", TEST_HASH}}},
+                {HashNode{"testing1.txt", uniqueTestHash()}}},
        HashNode{"test",
                 Hash{141, 121, 203, 201, 164, 236, 221, 225, 18, 252, 145, 186,
                      98, 91, 19, 194},
-                {HashNode{"testing1.txt", TEST_HASH}}}},
+                {HashNode{"testing1.txt", uniqueTestHash()}}}},
   };
   assert(actual_directory_hash_node == expected_directory_hash_node);
 }
@@ -985,25 +1011,26 @@ void testSortingDuplicateINodesSet() {
 void testTransforming() {
   // Arrange
   const DirectoryTableRow::Rows test_directory_results = {
-      {1, "apple", nullptr},
-      {2, "banana", new unsigned int(1)},
-      {3, "cherry", new unsigned int(1)},
-      {4, "orange", new unsigned int(1)},
-      {5, "pineapple", new unsigned int(1)},
-      {6, "coconut", new unsigned int(3)},
-      {7, "pear", new unsigned int(3)},
-      {8, "coconut", new unsigned int(4)},
-      {9, "pear", new unsigned int(4)},
-      {10, "dragonfruit", new unsigned int(5)},
-      {11, "grapefruit", new unsigned int(10)}};
+      {1, (puchar) "apple", -1},      {2, (puchar) "banana", 1},
+      {3, (puchar) "cherry", 1},      {4, (puchar) "orange", 1},
+      {5, (puchar) "pineapple", 1},   {6, (puchar) "coconut", 3},
+      {7, (puchar) "pear", 3},        {8, (puchar) "coconut", 4},
+      {9, (puchar) "pear", 4},        {10, (puchar) "dragonfruit", 5},
+      {11, (puchar) "grapefruit", 10}};
 
   const HashTableRow::Rows test_hash_results = {
-      {1, "one.txt", Hash{1}},     {2, "two.txt", Hash{1}},
-      {2, "three.txt", Hash{5}},   {2, "four.txt", Hash{5}},
-      {6, "five.txt", Hash{2}},    {6, "six.txt", Hash{3}},
-      {7, "seven.txt", Hash{4}},   {8, "eight.txt", Hash{2}},
-      {8, "nine.txt", Hash{3}},    {9, "ten.txt", Hash{4}},
-      {10, "eleven.txt", Hash{4}}, {11, "twelve.txt", Hash{4}}};
+      {1, (puchar) "one.txt", (void*)uniqueTestBlob(1).begin()},
+      {2, (puchar) "two.txt", (void*)uniqueTestBlob(1).begin()},
+      {2, (puchar) "three.txt", (void*)uniqueTestBlob(5).begin()},
+      {2, (puchar) "four.txt", (void*)uniqueTestBlob(5).begin()},
+      {6, (puchar) "five.txt", (void*)uniqueTestBlob(2).begin()},
+      {6, (puchar) "six.txt", (void*)uniqueTestBlob(3).begin()},
+      {7, (puchar) "seven.txt", (void*)uniqueTestBlob(4).begin()},
+      {8, (puchar) "eight.txt", (void*)uniqueTestBlob(2).begin()},
+      {8, (puchar) "nine.txt", (void*)uniqueTestBlob(3).begin()},
+      {9, (puchar) "ten.txt", (void*)uniqueTestBlob(4).begin()},
+      {10, (puchar) "eleven.txt", (void*)uniqueTestBlob(4).begin()},
+      {11, (puchar) "twelve.txt", (void*)uniqueTestBlob(4).begin()}};
 
   // Act
   DuplicateINodesSet actual_duplicate_i_nodes_set =
@@ -1013,21 +1040,16 @@ void testTransforming() {
   DuplicateINodesSet expected_duplicate_i_nodes_set = {
       {{"apple", "cherry"}, {"apple", "orange"}},
       {{"apple", "one.txt"}, {"apple", "banana", "two.txt"}},
+      {{"apple", "banana", "four.txt"}, {"apple", "banana", "three.txt"}},
       {{"apple", "cherry", "pear"},
        {"apple", "orange", "pear"},
        {"apple", "pineapple", "dragonfruit", "grapefruit"}},
-      {{"apple", "banana", "four.txt"}, {"apple", "banana", "three.txt"}},
       {{"apple", "cherry", "pear", "seven.txt"},
        {"apple", "orange", "pear", "ten.txt"},
        {"apple", "pineapple", "dragonfruit", "eleven.txt"},
        {"apple", "pineapple", "dragonfruit", "grapefruit", "twelve.txt"}}};
 
   assert(expected_duplicate_i_nodes_set == actual_duplicate_i_nodes_set);
-
-  // Cleanup
-  for (const DirectoryTableRow test_directory_result : test_directory_results) {
-    delete test_directory_result.parent_id;
-  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1042,6 +1064,7 @@ int main() {
   testDuplicateDirectoryTreeCreation();
   testWeGetEmptyDirectoryTreeWithEmptyDirectoryRows();
   testWeGetEmptyDirectoryTreeWithEmptyHashRows();
+  testBlobToHash();
   testBuildingSingleFileNodeBranch();
   testMergingTwoBranches();
   testWeGetEmptyDirectoryTreeWhenMergingTreesWithoutSameRoot();

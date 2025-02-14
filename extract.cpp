@@ -11,16 +11,16 @@
 
 constexpr SemVer FDUPES_VERSION{2, 0, 0};
 
-bool DirectoryTableRow::operator==(const DirectoryTableRow& rhs) {
+bool DirectoryTableRow::operator==(const DirectoryTableRow& rhs) const {
   return rhs.id == id && rhs.name == name && rhs.parent_id == parent_id;
 };
 
-bool HashTableRow::operator==(const HashTableRow& rhs) {
+bool HashTableRow::operator==(const HashTableRow& rhs) const {
   return rhs.directory_id == directory_id && rhs.name == name &&
          rhs.hash == hash;
 };
 
-bool FileHashRows::operator==(const FileHashRows& rhs) {
+bool FileHashRows::operator==(const FileHashRows& rhs) const {
   return rhs.directory_rows == directory_rows && rhs.hash_rows == hash_rows;
 }
 
@@ -169,15 +169,17 @@ bool SQLiteTableView<T>::step() {
     return false;
   }
 
-  last_row_fetched = buildTableRow();
+  SQLiteTableView<T>::last_row_fetched = buildTableRow();
 
   return true;
 }
 
 DirectoryTableRow DirectoryTableView::buildTableRow() {
+  int parent_id = sqlite3_column_int(res, 3);
+
   return DirectoryTableRow{.id = sqlite3_column_int(res, 0),
                            .name = sqlite3_column_text(res, 1),
-                           .parent_id = sqlite3_column_int(res, 3)};
+                           .parent_id = parent_id == 0 ? -1 : parent_id};
 }
 
 HashTableRow HashTableView::buildTableRow() {

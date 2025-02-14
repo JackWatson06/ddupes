@@ -3,7 +3,7 @@
 case "$1" in
   "extract")
     echo "Running extract tests"
-    g++ test_extract.cpp extract.cpp -L/usr/lib -lssl -lcrypto -o build/test_extract.o && build/test_extract.o && echo "Success"
+    g++ test_extract.cpp extract.cpp -L/usr/lib -lssl -lcrypto -lsqlite3 -o build/test_extract.o && build/test_extract.o && echo "Success"
     ;;
   "transform")
     echo "Running transform tests"
@@ -15,7 +15,7 @@ case "$1" in
     ;;
   *)
     echo "Running all tests"
-    g++ test_extract.cpp extract.cpp -L/usr/lib -lssl -lcrypto -o build/test_extract.o && build/test_extract.o && echo "Success"
+    g++ test_extract.cpp extract.cpp -L/usr/lib -lssl -lcrypto -lsqlite3 -o build/test_extract.o && build/test_extract.o && echo "Success"
     g++ test_transform.cpp transform.cpp -L/usr/lib -lssl -lcrypto -o build/test_transform.o && build/test_transform.o && echo "Success"
     g++ test_load.cpp load.cpp -L/usr/lib -lssl -lcrypto -o build/test_load.o && build/test_load.o && echo "Success"
     ;;
