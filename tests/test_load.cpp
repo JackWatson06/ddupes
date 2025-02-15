@@ -1,7 +1,7 @@
 #include <cassert>
 #include <sstream>
 
-#include "./load.h"
+#include "../load.h"
 
 /* -------------------------------------------------------------------------- */
 /*                                    Tests                                   */

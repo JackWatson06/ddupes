@@ -1,7 +1,7 @@
 #include <cassert>
 #include <cstdint>
 
-#include "./transform.h"
+#include "../transform.h"
 
 /* -------------------------------------------------------------------------- */
 /*                                    Mocks                                   */
@@ -34,20 +34,6 @@ uint8_t* uniqueTestBlob(uint8_t first_byte = 255) {
                                         255,        255, 255, 255, 255, 255,
                                         255,        255, 255, 255};
 }
-
-// void*  uniqueTestBlob(uint8_t first_byte = 255) {
-//   uint8_t* blob =
-//       new uint8_t[16];
-//   return blob;
-// }
-
-// void freeUniqueBlob(const void* blob) { delete[] (uint8_t*)blob; }
-
-// void freeHashTableRows(const HashTableRow::Rows& hash_table_rows) {
-//   for (const HashTableRow row : hash_table_rows) {
-//     freeUniqueBlob(row.hash);
-//   }
-// }
 
 /* -------------------------------------------------------------------------- */
 /*                                    Tests                                   */
