@@ -6,23 +6,7 @@
 #include <cerrno>
 #include <regex>
 
-// Remove the below
-#include <iostream>
-
 constexpr SemVer FDUPES_VERSION{2, 0, 0};
-
-bool DirectoryTableRow::operator==(const DirectoryTableRow& rhs) const {
-  return rhs.id == id && rhs.name == name && rhs.parent_id == parent_id;
-};
-
-bool HashTableRow::operator==(const HashTableRow& rhs) const {
-  return rhs.directory_id == directory_id && rhs.name == name &&
-         rhs.hash == hash;
-};
-
-bool FileHashRows::operator==(const FileHashRows& rhs) const {
-  return rhs.directory_rows == directory_rows && rhs.hash_rows == hash_rows;
-}
 
 /* -------------------------------------------------------------------------- */
 /*                            File Executor Service                           */
@@ -67,6 +51,7 @@ ExecuteFileResult ForkExecuteFileCommand::execute(
   for (const std::string& arg : args) {
     arg_c_strings.push_back(strdup(arg.c_str()));
   }
+  arg_c_strings.push_back(nullptr);
 
   int command_fds[2];
 
@@ -149,10 +134,11 @@ SQLiteDatabase::SQLiteDatabase(std::string file) {
 
 template <class T>
 void SQLiteTableView<T>::prepare(std::string query) {
-  int codde = sqlite3_prepare_v2(db.getDb(), query.c_str(), -1, &res, 0);
+  int code = sqlite3_prepare_v2(db.getDb(), query.c_str(), -1, &res, 0);
 
-  if (codde != SQLITE_OK) {
-    throw UnableToBuildStatementError("Error trying to build the statement.");
+  if (code != SQLITE_OK) {
+    throw UnableToBuildStatementError("Error trying to build the statement: " +
+                                      query);
   }
 }
 
@@ -174,18 +160,26 @@ bool SQLiteTableView<T>::step() {
   return true;
 }
 
+#include <iostream>
 DirectoryTableRow DirectoryTableView::buildTableRow() {
+  // Parent Id
   int parent_id = sqlite3_column_int(res, 3);
+  parent_id = parent_id == 0 ? -1 : parent_id;
 
-  return DirectoryTableRow{.id = sqlite3_column_int(res, 0),
-                           .name = sqlite3_column_text(res, 1),
-                           .parent_id = parent_id == 0 ? -1 : parent_id};
+  return DirectoryTableRow{
+      .id = sqlite3_column_int(res, 0),
+      .name = std::string((const char*)sqlite3_column_text(res, 1)),
+      .parent_id = parent_id};
 }
 
 HashTableRow HashTableView::buildTableRow() {
-  return {.directory_id = sqlite3_column_int(res, 0),
-          .name = sqlite3_column_text(res, 1),
-          .hash = sqlite3_column_blob(res, 10)};
+  // Hash
+  const uint8_t* blob = (const uint8_t*)sqlite3_column_blob(res, 10);
+  uint8_t* blob_buffer = new uint8_t[MD5_DIGEST_LENGTH];
+  std::memcpy(blob_buffer, blob, MD5_DIGEST_LENGTH);
+
+  return {sqlite3_column_int(res, 0),
+          std::string((const char*)sqlite3_column_text(res, 1)), blob_buffer};
 }
 
 /* -------------------------------------------------------------------------- */
@@ -235,7 +229,7 @@ void checkFDupesVersion(std::string fdupes_file,
 void executeFDupesCacheBuild(std::string fdupes_file,
                              RelativePaths paths_to_check,
                              ForkExecuteFileCommand& executor) {
-  std::vector<std::string> args{"fdupes", "--cache"};
+  std::vector<std::string> args{"fdupes", "-r", "--cache", "-x", "cache.clear"};
 
   for (const std::string path_to_check : paths_to_check) {
     args.push_back(path_to_check);
@@ -245,7 +239,8 @@ void executeFDupesCacheBuild(std::string fdupes_file,
       executor.execute(fdupes_file, args);
 
   if (fdupes_cache_build_result.return_code != 0) {
-    throw FailedFDupesCacheBuildException("FDupes command failed!");
+    throw FailedFDupesCacheBuildException("FDupes command failed! Output: " +
+                                          fdupes_cache_build_result.output);
   }
 }
 
@@ -292,8 +287,8 @@ FileHashRows extract(const RelativePaths& paths,
 
   // Load the data from the SQL database.
   SQLiteDatabase sqlite{cache_directory};
-  DirectoryTableView directory_table_view{cache_directory};
-  HashTableView hash_table_view{cache_directory};
+  DirectoryTableView directory_table_view{sqlite};
+  HashTableView hash_table_view{sqlite};
 
   return loadDataFromCache(
       (TableView<DirectoryTableRow>* const)&directory_table_view,

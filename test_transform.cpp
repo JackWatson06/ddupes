@@ -29,17 +29,16 @@ Hash uniqueTestHash(uint8_t first_byte = 255) {
   return full_hash;
 }
 
-std::array<uint8_t, 16> uniqueTestBlob(uint8_t first_byte = 255) {
-  std::array<uint8_t, 16> blob = {first_byte, 255, 255, 255, 255, 255,
-                                  255,        255, 255, 255, 255, 255,
-                                  255,        255, 255, 255};
-  return blob;
+uint8_t* uniqueTestBlob(uint8_t first_byte = 255) {
+  return new uint8_t[MD5_DIGEST_LENGTH]{first_byte, 255, 255, 255, 255, 255,
+                                        255,        255, 255, 255, 255, 255,
+                                        255,        255, 255, 255};
 }
 
-// void* (void*) uniqueTestBlob(uint8_t first_byte = 255) {
+// void*  uniqueTestBlob(uint8_t first_byte = 255) {
 //   uint8_t* blob =
 //       new uint8_t[16];
-//   return (void*)blob;
+//   return blob;
 // }
 
 // void freeUniqueBlob(const void* blob) { delete[] (uint8_t*)blob; }
@@ -109,12 +108,11 @@ void testTwoHashesAreDifferent() {
 
 /* ------------------------- buildDirectoryRowIdMap ------------------------- */
 void testBuildingDirectoryRowIdMap() {
-  const DirectoryTableRow::Rows test_directory_results = {
-      {1, (puchar) "/", -1},
-      {2, (puchar) "home", 1},
-      {3, (puchar) "dir1", 2},
-      {4, (puchar) "dir2", 2},
-      {5, (puchar) "sub_dir", 4}};
+  const DirectoryTableRow::Rows test_directory_results = {{1, "/", -1},
+                                                          {2, "home", 1},
+                                                          {3, "dir1", 2},
+                                                          {4, "dir2", 2},
+                                                          {5, "sub_dir", 4}};
 
   // Act
   DirectoryRowIdMap actual_directory_result_id_map =
@@ -132,22 +130,22 @@ void testBuildingDirectoryRowIdMap() {
 /* --------------------------- buildDirectoryTree --------------------------- */
 void testDuplicateDirectoryTreeCreation() {
   // Arrange
-  const DirectoryTableRow::Rows test_directory_results = {
-      {1, (puchar) "/", -1},
-      {2, (puchar) "home", 1},
-      {3, (puchar) "dir1", 2},
-      {4, (puchar) "dir2", 2},
-      {5, (puchar) "sub_dir", 4}};
+  const DirectoryTableRow::Rows test_directory_results = {{1, "/", -1},
+                                                          {2, "home", 1},
+                                                          {3, "dir1", 2},
+                                                          {4, "dir2", 2},
+                                                          {5, "sub_dir", 4}};
   const DirectoryRowIdMap test_directory_results_id_map{
       {1, &test_directory_results[0]}, {2, &test_directory_results[1]},
       {3, &test_directory_results[2]}, {4, &test_directory_results[3]},
       {5, &test_directory_results[4]},
   };
+
   const HashTableRow::Rows test_hash_results = {
-      {5, (puchar) "testing1.txt", (void*)uniqueTestBlob(128).begin()},
-      {4, (puchar) "testing2.txt", (void*)uniqueTestBlob(196).begin()},
-      {4, (puchar) "testing3.txt", (void*)uniqueTestBlob(200).begin()},
-      {3, (puchar) "testing4.txt", (void*)uniqueTestBlob(255).begin()}};
+      {5, "testing1.txt", uniqueTestBlob(128)},
+      {4, "testing2.txt", uniqueTestBlob(196)},
+      {4, "testing3.txt", uniqueTestBlob(200)},
+      {3, "testing4.txt", uniqueTestBlob(255)}};
 
   // Act
   DirectoryNode actual_directory_tree =
@@ -180,7 +178,7 @@ void testWeGetEmptyDirectoryTreeWithEmptyDirectoryRows() {
   // Arrange
   const DirectoryRowIdMap test_directory_results = {};
   const HashTableRow::Rows test_hash_results = {
-      {5, (puchar) "testing1.txt", (void*)uniqueTestBlob(128).begin()},
+      {5, "testing1.txt", uniqueTestBlob(128)},
   };
 
   // Act
@@ -194,7 +192,7 @@ void testWeGetEmptyDirectoryTreeWithEmptyDirectoryRows() {
 void testWeGetEmptyDirectoryTreeWithEmptyHashRows() {
   // Arrange
   const DirectoryTableRow::Rows test_directory_results = {
-      {2, (puchar) "home", 1},
+      {2, "home", 1},
   };
   const DirectoryRowIdMap test_directory_results_id_map{
       {1, &test_directory_results[0]},
@@ -212,10 +210,10 @@ void testWeGetEmptyDirectoryTreeWithEmptyHashRows() {
 /* ------------------------------- blobToHash ------------------------------- */
 void testBlobToHash() {
   // Arrange
-  void* test_blob = (void*)uniqueTestBlob().begin();
+  void* test_blob = uniqueTestBlob();
 
   // Act
-  Hash actual_hash = blobToHash((void*)test_blob);
+  Hash actual_hash = blobToHash(test_blob);
 
   // Assert
   assert(actual_hash == uniqueTestHash());
@@ -225,18 +223,14 @@ void testBlobToHash() {
 void testBuildingSingleFileNodeBranch() {
   // Arrange
   const DirectoryTableRow::Rows test_directory_results = {
-      {1, (puchar) "/", -1},
-      {2, (puchar) "home", 1},
-      {3, (puchar) "dir1", 2},
-      {4, (puchar) "sub_dir", 3}};
+      {1, "/", -1}, {2, "home", 1}, {3, "dir1", 2}, {4, "sub_dir", 3}};
   const DirectoryRowIdMap test_directory_results_id_map{
       {1, &test_directory_results[0]},
       {2, &test_directory_results[1]},
       {3, &test_directory_results[2]},
       {4, &test_directory_results[3]},
   };
-  const HashTableRow test_hash_result{4, (puchar) "testing1.txt",
-                                      (void*)uniqueTestBlob(128).begin()};
+  const HashTableRow test_hash_result{4, "testing1.txt", uniqueTestBlob(128)};
 
   // Act
   DirectoryNode actual_directory_tree =
@@ -1011,30 +1005,31 @@ void testSortingDuplicateINodesSet() {
 void testTransforming() {
   // Arrange
   const DirectoryTableRow::Rows test_directory_results = {
-      {1, (puchar) "apple", -1},      {2, (puchar) "banana", 1},
-      {3, (puchar) "cherry", 1},      {4, (puchar) "orange", 1},
-      {5, (puchar) "pineapple", 1},   {6, (puchar) "coconut", 3},
-      {7, (puchar) "pear", 3},        {8, (puchar) "coconut", 4},
-      {9, (puchar) "pear", 4},        {10, (puchar) "dragonfruit", 5},
-      {11, (puchar) "grapefruit", 10}};
+      {1, "apple", -1},       {2, "banana", 1},      {3, "cherry", 1},
+      {4, "orange", 1},       {5, "pineapple", 1},   {6, "coconut", 3},
+      {7, "pear", 3},         {8, "coconut", 4},     {9, "pear", 4},
+      {10, "dragonfruit", 5}, {11, "grapefruit", 10}};
 
   const HashTableRow::Rows test_hash_results = {
-      {1, (puchar) "one.txt", (void*)uniqueTestBlob(1).begin()},
-      {2, (puchar) "two.txt", (void*)uniqueTestBlob(1).begin()},
-      {2, (puchar) "three.txt", (void*)uniqueTestBlob(5).begin()},
-      {2, (puchar) "four.txt", (void*)uniqueTestBlob(5).begin()},
-      {6, (puchar) "five.txt", (void*)uniqueTestBlob(2).begin()},
-      {6, (puchar) "six.txt", (void*)uniqueTestBlob(3).begin()},
-      {7, (puchar) "seven.txt", (void*)uniqueTestBlob(4).begin()},
-      {8, (puchar) "eight.txt", (void*)uniqueTestBlob(2).begin()},
-      {8, (puchar) "nine.txt", (void*)uniqueTestBlob(3).begin()},
-      {9, (puchar) "ten.txt", (void*)uniqueTestBlob(4).begin()},
-      {10, (puchar) "eleven.txt", (void*)uniqueTestBlob(4).begin()},
-      {11, (puchar) "twelve.txt", (void*)uniqueTestBlob(4).begin()}};
+      {1, "one.txt", uniqueTestBlob(1)},
+      {2, "two.txt", uniqueTestBlob(1)},
+      {2, "three.txt", uniqueTestBlob(5)},
+      {2, "four.txt", uniqueTestBlob(5)},
+      {6, "five.txt", uniqueTestBlob(2)},
+      {6, "six.txt", uniqueTestBlob(3)},
+      {7, "seven.txt", uniqueTestBlob(4)},
+      {8, "eight.txt", uniqueTestBlob(2)},
+      {8, "nine.txt", uniqueTestBlob(3)},
+      {9, "ten.txt", uniqueTestBlob(4)},
+      {10, "eleven.txt", uniqueTestBlob(4)},
+      {11, "twelve.txt", uniqueTestBlob(4)}};
+
+  const FileHashRows test_file_hash_rows = {
+      .directory_rows = test_directory_results, .hash_rows = test_hash_results};
 
   // Act
   DuplicateINodesSet actual_duplicate_i_nodes_set =
-      transform(test_directory_results, test_hash_results);
+      transform(test_file_hash_rows);
 
   // Assert
   DuplicateINodesSet expected_duplicate_i_nodes_set = {

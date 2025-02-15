@@ -132,7 +132,7 @@ constexpr uint MD5_DIGEST_LENGTH = 16;
 // int callback(void *NotUsed, int argc, char **argv, char **az_col_name) {
 //   NotUsed = 0;
 //   for (int i = 0; i < argc; i++) {
-//     printf("%s = %s\n", az_col_name[i], argv[i] ? argv[i] : "NULL");
+//     printf("%s = %s\n", az_col_name[i], argv[i] ? argv[i] : "nullptr");
 //   }
 
 //   printf("\n");

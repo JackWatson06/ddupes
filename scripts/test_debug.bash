@@ -14,6 +14,6 @@ case "$1" in
     gdb "build/test_load.o"
     ;;
   *)
-    echo "Please pass in the file you want to debug. Options are 'transform', or 'load'".
+    echo "Please pass in the file you want to debug. Options are 'extract', 'transform', or 'load'".
     ;;
 esac

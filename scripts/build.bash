@@ -1,3 +1,3 @@
 #!/bin/bash
 
-g++ -g extract.cpp load.cpp transform.cpp ddupes.cpp -L/usr/lib -lssl -lcrypto -o build/ddupes.o
+g++ extract.cpp extract_output.cpp load.cpp transform.cpp ddupes.cpp -L/usr/lib -lssl -lcrypto -lsqlite3 -o build/ddupes.o

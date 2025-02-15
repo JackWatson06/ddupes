@@ -113,5 +113,4 @@ bool comparePath(const SVector &path_one, const SVector &path_two);
 bool comparePaths(const Paths &paths_one, const Paths &paths_two);
 void sortPaths(Paths &paths);
 void sortDuplicateINodesSet(DuplicateINodesSet &duplicate_i_nodes_set);
-DuplicateINodesSet transform(const DirectoryTableRow::Rows &directory_results,
-                             const HashTableRow::Rows &hash_results);
+DuplicateINodesSet transform(const FileHashRows &file_hash_rows);

@@ -19,10 +19,10 @@ class FDupesVersionException : std::runtime_error {
 class InvalidVersionException : std::runtime_error {
   using std::runtime_error::runtime_error;
 };
-class MissingVersionException : std::runtime_error {
+class MissingVersionException : public std::runtime_error {
   using std::runtime_error::runtime_error;
 };
-class FailedFDupesCacheBuildException : std::runtime_error {
+class FailedFDupesCacheBuildException : public std::runtime_error {
   using std::runtime_error::runtime_error;
 };
 class CacheNotFoundException : std::runtime_error {
@@ -83,8 +83,10 @@ class UnableToConnectError : std::runtime_error {
   using std::runtime_error::runtime_error;
 };
 
-class UnableToBuildStatementError : std::runtime_error {
-  using std::runtime_error::runtime_error;
+class UnableToBuildStatementError : public std::runtime_error {
+ public:
+  UnableToBuildStatementError(const std::string& message)
+      : std::runtime_error(message) {}
 };
 
 class UnableToStepError : std::runtime_error {
@@ -107,7 +109,11 @@ template <class T>
 class SQLiteTableView : public TableView<T> {
  public:
   SQLiteTableView(const SQLiteDatabase& db) : db(db) {}
-  ~SQLiteTableView() { sqlite3_finalize(res); }
+  ~SQLiteTableView() {
+    if (res != nullptr) {
+      sqlite3_finalize(res);
+    }
+  }
 
   virtual T buildTableRow() = 0;
 
@@ -115,8 +121,8 @@ class SQLiteTableView : public TableView<T> {
   bool step();
 
  protected:
-  const SQLiteDatabase db;
-  sqlite3_stmt* res;
+  const SQLiteDatabase& db;
+  sqlite3_stmt* res = nullptr;
 };
 
 class DirectoryTableView : public SQLiteTableView<DirectoryTableRow> {

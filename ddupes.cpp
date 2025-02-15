@@ -1,4 +1,8 @@
+#include <iostream>
+
 #include "extract.h"
+#include "load.h"
+#include "transform.h"
 
 /*
 ** Functionality and Design **
@@ -24,16 +28,15 @@ type. The object will already be constructed. When it's passed in.
 
 /**
 ** TODO **
-- Load from the SQLLite db.
 - Remove the SQLLite cache at the end.
 - Having a filter to return the folder I am specifically looking at would be
 wonderful.
-- Change our DirectoryTableRow to use a -1 to represent a null instead of
-pointer for the parent_id.
 - How can we get the home directory of the current user when finding the hash.db
 file.
 - Integration tests with the SQLLite query classes.
 - Improve error handling for sqlite
+- Do a map of the .h file dependencies
+- Double check the nullptr check for the hash check.
 */
 
 /**
@@ -76,7 +79,16 @@ _g|460096331|460096331|ï¿½Eï¿½ï¿½#,G.ï¿½;ï¿½ï¿½ï¿½ï¿½P|4096|ï¿½Eï¿½ï¿½#,G.ï¿½;ï¿
  */
 
 int main() {
-  extract({"testing_dirs/dir1", "testing_dirs/dir2"},
-          "/home/jack/.cache/fdupes/hash.db");
+  try {
+    FileHashRows extraction_results =
+        extract({"testing_dirs/dir1", "testing_dirs/dir"},
+                "/home/jack/.cache/fdupes/hash.db");
+    const DuplicateINodesSet transformation_results =
+        transform(extraction_results);
+    load(std::cout, transformation_results);
+  } catch (const std::runtime_error& e) {
+    std::cerr << e.what() << std::endl;
+  }
+
   return 0;
 }

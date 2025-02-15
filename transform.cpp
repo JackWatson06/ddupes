@@ -5,8 +5,6 @@
 #include <algorithm>
 #include <queue>
 
-constexpr uint MD5_DIGEST_LENGTH = 16;
-
 std::string DirectoryNode::getName() const { return name; }
 
 FileNode::Files DirectoryNode::getFiles() const { return files; }
@@ -57,7 +55,7 @@ Hash computeHash(Hashes hashes) {
   unsigned int md5_digest_len = EVP_MD_size(EVP_md5());
 
   md_context = EVP_MD_CTX_new();
-  EVP_DigestInit_ex(md_context, EVP_md5(), NULL);
+  EVP_DigestInit_ex(md_context, EVP_md5(), nullptr);
 
   for (const Hash file_hash : hashes) {
     EVP_DigestUpdate(md_context, file_hash.data(), file_hash.size());
@@ -98,15 +96,14 @@ DirectoryNode buildFileNodeBranch(const HashTableRow &hash_result,
                                   const DirectoryRowIdMap &directory_id_map) {
   const DirectoryTableRow *next_directory_pointer =
       directory_id_map.at(hash_result.directory_id);
-  DirectoryNode root_node{std::string((char *)next_directory_pointer->name),
-                          {FileNode{std::string((char *)hash_result.name),
-                                    blobToHash(hash_result.hash)}}};
+  DirectoryNode root_node{
+      next_directory_pointer->name,
+      {FileNode{hash_result.name, blobToHash(hash_result.hash)}}};
 
   while (next_directory_pointer->parent_id != -1) {
     next_directory_pointer =
         directory_id_map.at(next_directory_pointer->parent_id);
-    root_node = DirectoryNode{
-        std::string((char *)next_directory_pointer->name), {}, {root_node}};
+    root_node = DirectoryNode{next_directory_pointer->name, {}, {root_node}};
   }
 
   return root_node;
@@ -414,14 +411,13 @@ void sortDuplicateINodesSet(DuplicateINodesSet &duplicate_i_nodes_set) {
   }
 }
 
-DuplicateINodesSet transform(const DirectoryTableRow::Rows &directory_results,
-                             const HashTableRow::Rows &hash_results) {
+DuplicateINodesSet transform(const FileHashRows &file_hash_rows) {
   // Building Directory Map
   DirectoryRowIdMap directory_row_id_map =
-      buildDirectoryRowIdMap(directory_results);
+      buildDirectoryRowIdMap(file_hash_rows.directory_rows);
 
   DirectoryNode directory_tree =
-      buildDirectoryTree(hash_results, directory_row_id_map);
+      buildDirectoryTree(file_hash_rows.hash_rows, directory_row_id_map);
 
   // Compute all hashes
   HashNode directory_hash_tree = buildHashNode(directory_tree);

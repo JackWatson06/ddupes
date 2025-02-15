@@ -16,7 +16,7 @@ std::string joinVectorString(const SVector &vector_string, char delimiter) {
 }
 
 DuplicateINodeOutput joinDuplicateINodePaths(
-    DuplicateINodesSet &duplicate_i_nodes_set, char delimiter) {
+    const DuplicateINodesSet &duplicate_i_nodes_set, char delimiter) {
   DuplicateINodeOutput duplicate_output;
 
   for (const Paths &paths : duplicate_i_nodes_set) {
@@ -32,8 +32,9 @@ DuplicateINodeOutput joinDuplicateINodePaths(
   return duplicate_output;
 }
 
-void printDuplicateINodeSet(std::ostream &console,
-                            DuplicateINodeOutput &duplicate_i_nodes_output) {
+void printDuplicateINodeSet(
+    std::ostream &console,
+    const DuplicateINodeOutput &duplicate_i_nodes_output) {
   console << duplicate_i_nodes_output.size()
           << " Sets of Duplicates Found:\n\n";
 
@@ -49,4 +50,11 @@ void printDuplicateINodeSet(std::ostream &console,
       console << "\n";
     }
   }
+}
+
+void load(std::ostream &console,
+          const DuplicateINodesSet &duplicate_i_nodes_set) {
+  const DuplicateINodeOutput duplicate_i_nodes_output =
+      joinDuplicateINodePaths(duplicate_i_nodes_set, '/');
+  printDuplicateINodeSet(console, duplicate_i_nodes_output);
 }
