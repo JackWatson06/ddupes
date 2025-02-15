@@ -81,7 +81,7 @@ _g|460096331|460096331|ï¿½Eï¿½ï¿½#,G.ï¿½;ï¿½ï¿½ï¿½ï¿½P|4096|ï¿½Eï¿½ï¿½#,G.ï¿½;ï¿
 int main() {
   try {
     FileHashRows extraction_results =
-        extract({"testing_dirs/dir1", "testing_dirs/dir3"},
+        extract({"tests/testing_dirs/dir1", "tests/testing_dirs/dir4"},
                 "/home/jack/.cache/fdupes/hash.db");
     const DuplicateINodesSet transformation_results =
         transform(extraction_results);
