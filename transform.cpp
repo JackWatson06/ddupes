@@ -2,7 +2,6 @@
 
 #include <openssl/evp.h>
 
-#include <algorithm>
 #include <queue>
 
 std::string DirectoryNode::getName() const { return name; }
@@ -31,22 +30,6 @@ bool HashNode::operator==(const HashNode &rhs) const {
 
 bool HashPathSegment::operator==(const HashPathSegment &rhs) const {
   return rhs.hash_string == hash_string && rhs.path_segment == path_segment;
-}
-
-template <class T>
-int countShortestVector(const std::vector<T> &vectors) {
-  if (vectors.size() == 0) {
-    return 0;
-  }
-
-  int shortest_vector = vectors[0].size();
-  for (const T &vector : vectors) {
-    if (vector.size() < shortest_vector) {
-      shortest_vector = vector.size();
-    }
-  }
-
-  return shortest_vector;
 }
 
 Hash computeHash(Hashes hashes) {
@@ -307,9 +290,24 @@ void filterNonDuplicatesFromDupNodesMap(
   }
 }
 
+int countShortestDuplicatePath(const DuplicatePaths &duplicate_paths) {
+    if (duplicate_paths.size() == 0) {
+      return 0;
+    }
+  
+    int shortest_vector = duplicate_paths[0].size();
+    for (const HashPath &hash_path : duplicate_paths) {
+      if (hash_path.size() < shortest_vector) {
+        shortest_vector = hash_path.size();
+      }
+    }
+  
+    return shortest_vector;
+  }
+
 bool hasSharedParent(const DuplicatePaths &paths,
                      const DuplicatePathsMap &hash_to_duplicate_nodes) {
-  int shortest_path = countShortestVector(paths);
+  int shortest_path = countShortestDuplicatePath(paths);
 
   if (shortest_path == 0) {
     return false;
@@ -377,40 +375,6 @@ DuplicateINodesSet buildDuplicateINodeSet(
   return duplicate_i_node_set;
 }
 
-bool comparePath(const SVector &path_one, const SVector &path_two) {
-  for (int i = 0; i < path_one.size() - 1 && i < path_two.size() - 1; i++) {
-    if (path_one[i] == path_two[i]) {
-      continue;
-    }
-
-    return path_one[i] < path_two[i];
-  }
-
-  // The same except for the last file.
-  if (path_one.size() == path_two.size()) {
-    return path_one[path_one.size() - 1] < path_two[path_two.size() - 1];
-  }
-
-  return path_one.size() < path_two.size();
-}
-
-bool comparePaths(const Paths &paths_one, const Paths &paths_two) {
-  return countShortestVector(paths_one) < countShortestVector(paths_two);
-}
-
-void sortPaths(Paths &paths) {
-  std::sort(paths.begin(), paths.end(), comparePath);
-}
-
-void sortDuplicateINodesSet(DuplicateINodesSet &duplicate_i_nodes_set) {
-  sort(duplicate_i_nodes_set.begin(), duplicate_i_nodes_set.end(),
-       comparePaths);
-
-  for (Paths &paths : duplicate_i_nodes_set) {
-    sortPaths(paths);
-  }
-}
-
 DuplicateINodesSet transform(const FileHashRows &file_hash_rows) {
   // Building Directory Map
   DirectoryRowIdMap directory_row_id_map =
@@ -431,7 +395,5 @@ DuplicateINodesSet transform(const FileHashRows &file_hash_rows) {
   // Output
   DuplicateINodesSet duplicate_i_node_set =
       buildDuplicateINodeSet(hash_to_nodes.map);
-
-  sortDuplicateINodesSet(duplicate_i_node_set);
   return duplicate_i_node_set;
 }

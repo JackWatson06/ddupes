@@ -39,32 +39,6 @@ uint8_t* uniqueTestBlob(uint8_t first_byte = 255) {
 /*                                    Tests                                   */
 /* -------------------------------------------------------------------------- */
 
-/* --------------------------- countShortestVector -------------------------- */
-void testCountingShortestVectorLength() {
-  // Arrange
-  Paths paths_one = {
-      {"testing", "apples", "dir2", "dir3", "dir4", "dir5", "example_two.txt"},
-      {"test", "oranges", "dir2", "example_one.txt"},
-  };
-
-  // Act
-  int actual_path_count = countShortestVector(paths_one);
-
-  // Assert
-  assert(actual_path_count == 4);
-}
-
-void testCountingVectorsWithLengthZeroReturnsZero() {
-  // Arrange
-  Paths paths_one = {};
-
-  // Act
-  int actual_path_count = countShortestVector(paths_one);
-
-  // Assert
-  assert(actual_path_count == 0);
-}
-
 /* ------------------------------- computeHash ------------------------------ */
 void testHashingAListOfHashes() {
   // Arrange
@@ -704,6 +678,34 @@ void testFilteringMapReturnsDuplicates() {
                               expected_duplicate_nodes.map);
 }
 
+/* --------------------------- countShortestVector -------------------------- */
+void testCountingDuplicatePathsLength() {
+  // Arrange
+  DuplicatePaths test_duplicate_paths{
+      {{"apple", "\x01"}, {"orange", "\x02"}, {"pineapple", "\x03"}},
+      {{"apple", "\x01"},
+       {"cherry", "\x02"},
+       {"coconut", "\x03"},
+       {"testing", "\x03"}}};
+
+  // Act
+  int actual_path_count = countShortestDuplicatePath(test_duplicate_paths);
+
+  // Assert
+  assert(actual_path_count == 3);
+}
+
+void testCountingDuplicatePathsWithLengthZeroReturnsZero() {
+  // Arrange
+  DuplicatePaths test_duplicate_paths = {};
+
+  // Act
+  int actual_path_count = countShortestDuplicatePath(test_duplicate_paths);
+
+  // Assert
+  assert(actual_path_count == 0);
+}
+
 /* ----------------------------- hasSharedParent ---------------------------- */
 void testHasSharedParent() {
   // Arrange
@@ -864,104 +866,6 @@ void testBuildingDuplicateINotesSet() {
   assert(actual_duplicate_i_nodes_set == expected_duplicate_i_node_set);
 }
 
-/* ------------------------------- comparePath ------------------------------ */
-void testComparingPathReturnsBefore() {
-  // Arrange
-  SVector path_one = {"testing", "apples", "apple",          "dir3",
-                      "dir4",    "dir5",   "example_two.txt"};
-  SVector path_two = {"testing", "apples", "test", "example_two.txt"};
-
-  // Act
-  bool actual_sort_result = comparePath(path_one, path_two);
-
-  // Assert
-  assert(actual_sort_result == true);
-}
-
-void testComparingSizeWhenBothPathsHaveEqualParts() {
-  // Arrange
-  SVector path_one = {"testing", "apples", "example_two",    "dir3",
-                      "dir4",    "dir5",   "example_two.txt"};
-  SVector path_two = {"testing", "apples", "example_two"};
-
-  // Act
-  bool actual_sort_result = comparePath(path_one, path_two);
-
-  // Assert
-  assert(actual_sort_result == false);
-}
-
-/* ------------------------------ comparePaths ------------------------------ */
-void testComparingPathsReturnsBefore() {
-  // Arrange
-  Paths paths_one = {
-      {"testing", "apples", "dir2", "dir3", "dir4", "dir5", "example_two.txt"},
-      {"test", "oranges", "dir2", "example_one.txt"},
-  };
-  Paths paths_two = {
-      {"testing", "apples", "dir2", "dir3", "dir4", "dir5", "example_two.txt"},
-      {"test", "oranges", "dir2", "dir3", "example_two.txt"},
-  };
-
-  // Act
-  bool actual_sort_result = comparePaths(paths_one, paths_two);
-
-  // Assert
-  assert(actual_sort_result == true);
-}
-
-/* -------------------------------- sortPaths ------------------------------- */
-void testSortingPaths() {
-  // Arrange
-  Paths test_duplicate_paths = {
-      {"testing", "apples", "dir2", "dir3", "dir4", "dir5", "example_two.txt"},
-      {"test", "oranges", "dir2", "dir3", "example_two.txt"},
-      {"test", "oranges", "apples", "dir3", "example_two.txt"},
-      {"test", "oranges", "potatoe", "dir3", "example_two.txt"},
-      {"testing", "cats", "dir2", "dir3", "dir4", "example_two.txt"}};
-
-  // Act
-  sortPaths(test_duplicate_paths);
-
-  // Assert
-  Paths expected_duplicate_paths = {
-      {"test", "oranges", "apples", "dir3", "example_two.txt"},
-      {"test", "oranges", "dir2", "dir3", "example_two.txt"},
-      {"test", "oranges", "potatoe", "dir3", "example_two.txt"},
-      {"testing", "apples", "dir2", "dir3", "dir4", "dir5", "example_two.txt"},
-      {"testing", "cats", "dir2", "dir3", "dir4", "example_two.txt"}};
-
-  assert(test_duplicate_paths == expected_duplicate_paths);
-}
-
-/* ------------------------- sortDuplicateINodesSet ------------------------- */
-void testSortingDuplicateINodesSet() {
-  // Arrange
-  DuplicateINodesSet test_duplicate_i_nodes_set = {
-      {{"test", "sub-dir", "example_three.txt"},
-       {"test", "sub-dir", "example_four.txt"}},
-      {{"test", "example_one.txt"}, {"test", "sub-dir", "example_one.txt"}},
-      {{"test", "dir1"}, {"test", "dir2"}},
-      {{"testing", "dir1", "dir2", "dir3", "dir4", "dir5", "example_two.txt"},
-       {"test", "dir1", "dir2", "dir3", "example_two.txt"},
-       {"testing", "dir1", "dir2", "dir3", "dir4", "example_two.txt"}}};
-
-  // Act
-  sortDuplicateINodesSet(test_duplicate_i_nodes_set);
-
-  // Assert
-  DuplicateINodesSet expected_sorted_duplicate_i_nodes_set = {
-      {{"test", "example_one.txt"}, {"test", "sub-dir", "example_one.txt"}},
-      {{"test", "dir1"}, {"test", "dir2"}},
-      {{"test", "sub-dir", "example_four.txt"},
-       {"test", "sub-dir", "example_three.txt"}},
-      {{"test", "dir1", "dir2", "dir3", "example_two.txt"},
-       {"testing", "dir1", "dir2", "dir3", "dir4", "example_two.txt"},
-       {"testing", "dir1", "dir2", "dir3", "dir4", "dir5", "example_two.txt"}}};
-
-  assert(test_duplicate_i_nodes_set == expected_sorted_duplicate_i_nodes_set);
-}
-
 /* -------------------------------- transform ------------------------------- */
 /**
  * apple
@@ -1019,16 +923,16 @@ void testTransforming() {
 
   // Assert
   DuplicateINodesSet expected_duplicate_i_nodes_set = {
-      {{"apple", "cherry"}, {"apple", "orange"}},
-      {{"apple", "one.txt"}, {"apple", "banana", "two.txt"}},
-      {{"apple", "banana", "four.txt"}, {"apple", "banana", "three.txt"}},
-      {{"apple", "cherry", "pear"},
-       {"apple", "orange", "pear"},
+      {{"apple", "banana", "three.txt"}, {"apple", "banana", "four.txt"}},
+      {{"apple", "orange", "pear"},
+       {"apple", "cherry", "pear"},
        {"apple", "pineapple", "dragonfruit", "grapefruit"}},
-      {{"apple", "cherry", "pear", "seven.txt"},
+      {{"apple", "pineapple", "dragonfruit", "eleven.txt"},
        {"apple", "orange", "pear", "ten.txt"},
-       {"apple", "pineapple", "dragonfruit", "eleven.txt"},
-       {"apple", "pineapple", "dragonfruit", "grapefruit", "twelve.txt"}}};
+       {"apple", "cherry", "pear", "seven.txt"},
+       {"apple", "pineapple", "dragonfruit", "grapefruit", "twelve.txt"}},
+      {{"apple", "orange"}, {"apple", "cherry"}},
+      {{"apple", "one.txt"}, {"apple", "banana", "two.txt"}}};
 
   assert(expected_duplicate_i_nodes_set == actual_duplicate_i_nodes_set);
 }
@@ -1037,8 +941,6 @@ void testTransforming() {
 /*                                    Main                                    */
 /* -------------------------------------------------------------------------- */
 int main() {
-  testCountingShortestVectorLength();
-  testCountingVectorsWithLengthZeroReturnsZero();
   testHashingAListOfHashes();
   testTwoHashesAreDifferent();
   testBuildingDirectoryRowIdMap();
@@ -1062,16 +964,13 @@ int main() {
   testSearchingTreeForDuplicateNodes();
   testConvertingHashToString();
   testFilteringMapReturnsDuplicates();
+  testCountingDuplicatePathsLength();
+  testCountingDuplicatePathsWithLengthZeroReturnsZero();
   testHasSharedParent();
   testDoesNotHaveSharedParent();
   testDoesNotHaveSharedParentWhenEmpty();
   testFilteringSharedHashNodes();
   testBuildingSVectorFromPathSegment();
   testBuildingDuplicateINotesSet();
-  testComparingPathReturnsBefore();
-  testComparingSizeWhenBothPathsHaveEqualParts();
-  testComparingPathsReturnsBefore();
-  testSortingPaths();
-  testSortingDuplicateINodesSet();
   testTransforming();
 }

@@ -70,10 +70,6 @@ class DirectoryNode {
   Directories directories;
 };
 
-// Utility
-template <class T>
-int countShortestVector(const std::vector<T> &vectors);
-
 // Building Directory Map
 DirectoryRowIdMap buildDirectoryRowIdMap(
     const DirectoryTableRow::Rows &directory_table_rows);
@@ -101,6 +97,7 @@ HashToDuplicateNodes buildHashToDuplicateNodesMap(const HashNode &hash_node);
 std::string buildStringFromHash(const Hash &hash);
 void filterNonDuplicatesFromDupNodesMap(
     HashToDuplicateNodes &hash_to_duplicate_nodes);
+int countShortestDuplicatePath(const DuplicatePaths &duplicate_paths);
 bool hasSharedParent(const DuplicatePaths &paths,
                      const DuplicatePathsMap &hash_to_duplicate_nodes);
 void filterSharedHashNodes(HashToDuplicateNodes &hash_to_duplicate_nodes);
@@ -109,8 +106,4 @@ void filterSharedHashNodes(HashToDuplicateNodes &hash_to_duplicate_nodes);
 SVector buildPathsFromHashPath(const HashPath &path);
 DuplicateINodesSet buildDuplicateINodeSet(
     const DuplicatePathsMap &duplicate_nodes);
-bool comparePath(const SVector &path_one, const SVector &path_two);
-bool comparePaths(const Paths &paths_one, const Paths &paths_two);
-void sortPaths(Paths &paths);
-void sortDuplicateINodesSet(DuplicateINodesSet &duplicate_i_nodes_set);
 DuplicateINodesSet transform(const FileHashRows &file_hash_rows);

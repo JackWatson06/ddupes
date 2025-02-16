@@ -1,5 +1,7 @@
 #include "load.h"
 
+#include <algorithm>
+
 std::string joinVectorString(const SVector &vector_string, char delimiter) {
   std::string combined_string{""};
 
@@ -52,8 +54,65 @@ void printDuplicateINodeSet(
   }
 }
 
+bool comparePath(const SVector &path_one, const SVector &path_two) {
+  for (int i = 0; i < path_one.size() - 1 && i < path_two.size() - 1; i++) {
+    if (path_one[i] == path_two[i]) {
+      continue;
+    }
+
+    return path_one[i] < path_two[i];
+  }
+
+  // The same except for the last file.
+  if (path_one.size() == path_two.size()) {
+    return path_one[path_one.size() - 1] < path_two[path_two.size() - 1];
+  }
+
+  return path_one.size() < path_two.size();
+}
+
+int countShortestPath(const Paths &paths) {
+    if (paths.size() == 0) {
+      return 0;
+    }
+  
+    int shortest_vector = paths[0].size();
+    for (const SVector &vector : paths) {
+      if (vector.size() < shortest_vector) {
+        shortest_vector = vector.size();
+      }
+    }
+  
+    return shortest_vector;
+  }
+
+bool shortestPathAndLeastCount(const Paths &paths_one, const Paths &paths_two) {
+  int path_one_shortest_count = countShortestPath(paths_one);
+  int path_two_shortest_count = countShortestPath(paths_two);
+
+  if (path_one_shortest_count == path_two_shortest_count) {
+    return paths_one.size() < paths_two.size();
+  }
+
+  return path_one_shortest_count < path_two_shortest_count;
+}
+
+void sortPaths(Paths &paths) {
+  std::sort(paths.begin(), paths.end(), comparePath);
+}
+
+void sortDuplicateINodesSet(DuplicateINodesSet &duplicate_i_nodes_set) {
+  sort(duplicate_i_nodes_set.begin(), duplicate_i_nodes_set.end(),
+       shortestPathAndLeastCount);
+
+  for (Paths &paths : duplicate_i_nodes_set) {
+    sortPaths(paths);
+  }
+}
+
 void load(std::ostream &console,
-          const DuplicateINodesSet &duplicate_i_nodes_set) {
+          DuplicateINodesSet &duplicate_i_nodes_set) {
+  sortDuplicateINodesSet(duplicate_i_nodes_set);
   const DuplicateINodeOutput duplicate_i_nodes_output =
       joinDuplicateINodePaths(duplicate_i_nodes_set, '/');
   printDuplicateINodeSet(console, duplicate_i_nodes_output);
