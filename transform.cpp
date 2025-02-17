@@ -291,19 +291,19 @@ void filterNonDuplicatesFromDupNodesMap(
 }
 
 int countShortestDuplicatePath(const DuplicatePaths &duplicate_paths) {
-    if (duplicate_paths.size() == 0) {
-      return 0;
-    }
-  
-    int shortest_vector = duplicate_paths[0].size();
-    for (const HashPath &hash_path : duplicate_paths) {
-      if (hash_path.size() < shortest_vector) {
-        shortest_vector = hash_path.size();
-      }
-    }
-  
-    return shortest_vector;
+  if (duplicate_paths.size() == 0) {
+    return 0;
   }
+
+  int shortest_vector = duplicate_paths[0].size();
+  for (const HashPath &hash_path : duplicate_paths) {
+    if (hash_path.size() < shortest_vector) {
+      shortest_vector = hash_path.size();
+    }
+  }
+
+  return shortest_vector;
+}
 
 bool hasSharedParent(const DuplicatePaths &paths,
                      const DuplicatePathsMap &hash_to_duplicate_nodes) {

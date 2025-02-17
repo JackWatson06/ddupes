@@ -50,36 +50,36 @@ class SQLiteDatabase {
   sqlite3* db;
 };
 
-template <class T>
-class SQLiteTableView : public TableView<T> {
+struct HashInput {
+  unsigned int directory_id;
+  std::string name;
+  uint8_t* hash;
+};
+
+struct DirectoryInput {
+  unsigned int parent_id;
+  std::string name;
+};
+
+class DirectoryTableGateway {
  public:
-  SQLiteTableView(const SQLiteDatabase& db) : db(db) {}
-  ~SQLiteTableView() {
-    if (res != nullptr) {
-      sqlite3_finalize(res);
-    }
-  }
+  DirectoryTableGateway(const SQLiteDatabase& db) : db(db) {}
 
-  virtual T buildTableRow() = 0;
+  unsigned int fetchIdByName(std::string name);
+  DirectoryTableRow::Rows fetchAll(void);
+  void create(DirectoryInput directory_table_input);
 
-  void prepare(std::string query);
-  bool step();
-
- protected:
+ private:
   const SQLiteDatabase& db;
-  sqlite3_stmt* res = nullptr;
 };
 
-class DirectoryTableView : public SQLiteTableView<DirectoryTableRow> {
+class HashTableGateway {
  public:
-  using SQLiteTableView<DirectoryTableRow>::SQLiteTableView;
+  HashTableGateway(const SQLiteDatabase& db) : db(db) {}
 
-  DirectoryTableRow buildTableRow();
-};
+  HashTableRow::Rows fetchAll(void);
+  void create(HashInput hash_table_input);
 
-class HashTableView : public SQLiteTableView<HashTableRow> {
- public:
-  using SQLiteTableView<HashTableRow>::SQLiteTableView;
-
-  HashTableRow buildTableRow();
+ private:
+  const SQLiteDatabase& db;
 };
