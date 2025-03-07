@@ -179,7 +179,7 @@ DirectoryTableRow::Rows fetchAllDirectories(sqlite3* db) {
   return results;
 }
 
-int createDirectory(sqlite3* db, DirectoryInput& directory_table_input) {
+int createDirectory(sqlite3* db, DirectoryInput const& directory_table_input) {
   sqlite3_stmt* statement;
   int rc = sqlite3_prepare_v2(
       db, "INSERT INTO Directories (name, parent_id) VALUES(?, ?);", -1,
@@ -229,7 +229,7 @@ HashTableRow::Rows fetchAllHashes(sqlite3* db) {
   return results;
 }
 
-void createHash(sqlite3* db, HashInput& hash_table_input) {
+void createHash(sqlite3* db, HashInput const& hash_table_input) {
   sqlite3_stmt* statement;
   int rc = sqlite3_prepare_v2(db, "INSERT INTO Hashes VALUES(?, ?, ?);", -1,
                               &statement, 0);

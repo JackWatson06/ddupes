@@ -133,14 +133,14 @@ DirectoryTableRow::Rows mockFetchAllDirectories(sqlite3* db) {
 }
 
 int mockCreateDirectory(sqlite3* db,
-                        const DirectoryInput& directory_table_input) {
+                        DirectoryInput const& directory_table_input) {
   created_directories.push_back(directory_table_input);
   return ++created_directory_id;
 }
 
 HashTableRow::Rows mockFetchAllHashes(sqlite3* db) { return MOCK_HASHES; }
 
-void mockCreateHash(sqlite3* db, const HashInput& hash_table_input) {
+void mockCreateHash(sqlite3* db, HashInput const& hash_table_input) {
   uint8_t* hash_buffer = new uint8_t[MD5_DIGEST_LENGTH];
   std::memcpy(hash_buffer, hash_table_input.hash, MD5_DIGEST_LENGTH);
 

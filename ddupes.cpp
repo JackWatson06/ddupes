@@ -1,8 +1,10 @@
 #include <iostream>
 
-#include "extract.h"
-#include "load.h"
-#include "transform.h"
+#include "src/extract.h"
+#include "src/fs/file_system.h"
+#include "src/load.h"
+#include "src/sqlite/sqlite.h"
+#include "src/transform.h"
 
 /*
 ** Functionality and Design **
@@ -34,29 +36,62 @@ type. The object will already be constructed. When it's passed in.
 wonderful.
 - How can we get the home directory of the current user when finding the hash.db
 file.
-- Integration tests with the SQLLite query classes.
 - Improve error handling for sqlite
 - Do a map of the .h file dependencies
 - Double check the nullptr check for the hash check.
 - Create a new hash type which has a == operator.
+- Create a path and hash library.
 */
 
-int buildHashCache() {}
+// CreateCacheDatabaseServices mockCacheDatabaseServices() {
+//   return {nullptr, mockResetDB, mockCreateDirectory, mockCreateHash};
+// }
 
-int checkForDuplicates() {
-  FileHashRows extraction_results =
-      extract({"tests/testing_dirs/dir2", "tests/testing_dirs/dir3",
-               "tests/testing_dirs/dir1"},
-              "/home/jack/.cache/fdupes/hash.db");
-  DuplicateINodesSet transformation_results = transform(extraction_results);
-  load(std::cout, transformation_results);
-}
+// ExtractDatabaseServices mockExtractDatabaseServices() {
+//   return {nullptr, mockFetchAllDirectories, mockFetchAllHashes};
+// }
+
+// CreateCacheFileSystemServices mockCacheFileSystemServices() {
+//   return {mockQualifyRelativePath, mockVisitFiles, mockExtractHash};
+// }
+
+// int buildHashCache() {}
+
+// int checkForDuplicates() {
+//   FileHashRows extraction_results =
+//       extract({"tests/testing_dirs/dir2", "tests/testing_dirs/dir3",
+//                "tests/testing_dirs/dir1"},
+//               "/home/jack/.cache/fdupes/hash.db");
+//   DuplicateINodesSet transformation_results = transform(extraction_results);
+//   load(std::cout, transformation_results);
+// }
 
 int main() {
   try {
-    checkForDuplicates();
+    SVector paths = {"tests/testing_dirs/dir1", "tests/testing_dirs/dir2",
+                     "tests/testing_dirs/dir3", "tests/testing_dirs/dir4"};
+    sqlite3* db = initDB("testing.hash");
+
+    buildCache(
+        paths,
+        CreateCacheDatabaseServices{.db = db,
+                                    .resetDB = resetDB,
+                                    .createDirectory = createDirectory,
+                                    .createHash = createHash},
+        CreateCacheFileSystemServices{.qualifyRelativePath = qualifyRelativeURL,
+                                      .visitFiles = visitFiles,
+                                      .extractHash = extractHash});
+
+    FileHashRows extraction_results = extractUsingCache(
+        ExtractDatabaseServices{.db = db,
+                                .fetchAllDirectories = fetchAllDirectories,
+                                .fetchAllHashes = fetchAllHashes});
+    DuplicateINodesSet transformation_results = transform(extraction_results);
+    load(std::cout, transformation_results);
   } catch (const std::runtime_error& e) {
     std::cerr << e.what() << std::endl;
+  } catch (...) {
+    std::cerr << "Unexpected error." << std::endl;
   }
 
   return 0;

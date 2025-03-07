@@ -66,10 +66,10 @@ bool compareBlobs(const uint8_t* blob_one, const uint8_t* blob_two);
 
 int fetchLastDirectoryId(sqlite3* db);
 DirectoryTableRow::Rows fetchAllDirectories(sqlite3* db);
-int createDirectory(sqlite3* db, DirectoryInput& directory_table_input);
+int createDirectory(sqlite3* db, DirectoryInput const& directory_table_input);
 
 HashTableRow::Rows fetchAllHashes(sqlite3* db);
-void createHash(sqlite3* db, HashInput& hash_table_input);
+void createHash(sqlite3* db, HashInput const& hash_table_input);
 
 /* -------------------------------------------------------------------------- */
 /*                                   Errors                                   */
