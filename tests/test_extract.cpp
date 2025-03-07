@@ -1,38 +1,16 @@
 #include <unistd.h>
 
 #include <cassert>
+#include <cstring>
 
-#include "../extract.h"
+#include "../src/constants.h"
+#include "../src/extract.h"
+#include "../src/fs/file_system.h"
+#include "../src/sqlite/sqlite.h"
 
 /* -------------------------------------------------------------------------- */
 /*                                    Mocks                                   */
 /* -------------------------------------------------------------------------- */
-class MockExecuteFileCommand : public ForkExecuteFileCommand {
- public:
-  std::vector<std::string> commands_executed;
-  MockExecuteFileCommand(std::vector<ExecuteFileResult> mock_results)
-      : mock_results(mock_results) {};
-  ExecuteFileResult execute(const std::string path,
-                            std::vector<std::string> args) override;
-
- private:
-  std::vector<ExecuteFileResult> mock_results;
-};
-
-ExecuteFileResult MockExecuteFileCommand::execute(
-    const std::string path, const std::vector<std::string> args) {
-  std::string command = path + " ";
-
-  for (auto iter = args.begin(); iter != args.end() - 1; ++iter) {
-    command += *iter + " ";
-  }
-  command += *(args.end() - 1);
-
-  commands_executed.push_back(command);
-  auto result = mock_results.back();
-  mock_results.pop_back();
-  return result;
-}
 
 uint8_t* uniqueTestBlob(uint8_t first_byte = 255) {
   return new uint8_t[MD5_DIGEST_LENGTH]{first_byte, 255, 255, 255, 255, 255,
@@ -40,342 +18,488 @@ uint8_t* uniqueTestBlob(uint8_t first_byte = 255) {
                                         255,        255, 255, 255};
 }
 
+/* ---------------------------- File System Mocks --------------------------- */
+
+/*
+
+- Root Path: /home/testing/desktop/
+
+- Path One: ./dir1/
+- Path Two: ../documents/dir2/
+
+- Files:
+/home/testing/desktop/dir1/testing/test/example_one.txt
+/home/testing/desktop/dir1/testing/test/example_two.txt
+/home/testing/desktop/dir1/testing/example_three.txt
+/home/testing/desktop/dir1/testing/example_four.txt
+/home/testing/desktop/dir1/example_five.txt
+
+/home/testing/documents/dir2/example_one.txt
+/home/testing/documents/dir2/testing/example_two.txt
+/home/testing/documents/dir2/dir3/testing/test/example_three.txt
+/home/testing/documents/dir2/testing/example_four.txt
+*/
+
+std::string mockQualifyRelativePath(std::string& path) {
+  if (path == "./dir1/") {
+    return "/home/testing/desktop/dir1";
+  }
+
+  if (path == "../documents/dir2/") {
+    return "/home/testing/documents/dir2";
+  }
+
+  return "/home/testing/desktop/" + path;
+}
+
+void mockVisitFiles(const std::string& directory_path,
+                    FileVisitorCallback visitor_callback, void* context) {
+  if (directory_path == "./dir1/") {
+    unsigned int num_of_files = 7;
+    std::string paths[num_of_files]{"./dir1/testing",
+                                    "./dir1/testing/test",
+                                    "./dir1/testing/test/example_one.txt",
+                                    "./dir1/testing/test/example_two.txt",
+                                    "./dir1/testing/example_three.txt",
+                                    "./dir1/testing/example_four.txt",
+                                    "./dir1/example_five.txt"};
+    enum FileType types[num_of_files]{FILE_TYPE_DIRECTORY, FILE_TYPE_DIRECTORY,
+                                      FILE_TYPE_FILE,      FILE_TYPE_FILE,
+                                      FILE_TYPE_FILE,      FILE_TYPE_FILE,
+                                      FILE_TYPE_FILE};
+    for (int i = 0; i < num_of_files; ++i) {
+      visitor_callback(paths[i], types[i], context);
+    }
+  }
+
+  if (directory_path == "../documents/dir2/") {
+    unsigned int num_of_files = 8;
+    std::string paths[num_of_files]{
+        "../documents/dir2/example_one.txt",
+        "../documents/dir2/testing",
+        "../documents/dir2/testing/example_two.txt",
+        "../documents/dir2/testing/example_three.txt",
+        "../documents/dir2/dir3",
+        "../documents/dir2/dir3/testing",
+        "../documents/dir2/dir3/testing/test",
+        "../documents/dir2/dir3/testing/test/example_four.txt",
+    };
+    enum FileType types[num_of_files]{
+        FILE_TYPE_FILE,      FILE_TYPE_DIRECTORY, FILE_TYPE_FILE,
+        FILE_TYPE_FILE,      FILE_TYPE_DIRECTORY, FILE_TYPE_DIRECTORY,
+        FILE_TYPE_DIRECTORY, FILE_TYPE_FILE,
+    };
+    for (int i = 0; i < num_of_files; ++i) {
+      visitor_callback(paths[i], types[i], context);
+    }
+    return;
+  }
+}
+
+void mockExtractHash(uint8_t* hash, std::string path) {
+  for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
+    hash[i] = 255;
+  }
+}
+
+CreateCacheFileSystemServices mockCacheFileSystemServices() {
+  return {mockQualifyRelativePath, mockVisitFiles, mockExtractHash};
+}
+
+/* ------------------------------ Database Mock ----------------------------- */
+
+const DirectoryTableRow::Rows MOCK_DIRECTORIES{
+    {1, "dir1", -1},   {2, "dir2", -1},  {3, "oranges", 1},
+    {4, "oranges", 2}, {5, "apples", 1},
+};
+const HashTableRow::Rows MOCK_HASHES{
+    {1, "testing.txt", uniqueTestBlob()},
+    {3, "testing_two.txt", uniqueTestBlob()},
+    {4, "testing_three.txt", uniqueTestBlob()}};
+
+bool reset_db = false;
+std::vector<DirectoryInput> created_directories{};
+std::vector<HashInput> created_hashes{};
+int created_directory_id = 0;
+
+void mockResetDB(sqlite3* db) { reset_db = true; }
+
+unsigned int mockFetchDirectoryIdByName(sqlite3* db, const std::string& name) {
+  return 1;
+}
+
+DirectoryTableRow::Rows mockFetchAllDirectories(sqlite3* db) {
+  return MOCK_DIRECTORIES;
+}
+
+int mockCreateDirectory(sqlite3* db,
+                        const DirectoryInput& directory_table_input) {
+  created_directories.push_back(directory_table_input);
+  return ++created_directory_id;
+}
+
+HashTableRow::Rows mockFetchAllHashes(sqlite3* db) { return MOCK_HASHES; }
+
+void mockCreateHash(sqlite3* db, const HashInput& hash_table_input) {
+  uint8_t* hash_buffer = new uint8_t[MD5_DIGEST_LENGTH];
+  std::memcpy(hash_buffer, hash_table_input.hash, MD5_DIGEST_LENGTH);
+
+  created_hashes.push_back(
+      HashInput{.directory_id = hash_table_input.directory_id,
+                .name = hash_table_input.name,
+                .hash = hash_buffer});
+}
+
+CreateCacheDatabaseServices mockCacheDatabaseServices() {
+  return {nullptr, mockResetDB, mockCreateDirectory, mockCreateHash};
+}
+
+ExtractDatabaseServices mockExtractDatabaseServices() {
+  return {nullptr, mockFetchAllDirectories, mockFetchAllHashes};
+}
+
+void resetMockStates() {
+  created_directory_id = 0;
+  reset_db = false;
+  created_directories.clear();
+  created_hashes.clear();
+}
+
 /* -------------------------------------------------------------------------- */
 /*                                    Tests                                   */
 /* -------------------------------------------------------------------------- */
-
-/* ---------------------------- findFDupesCommand --------------------------- */
-void testFindingFDupes() {
-  // Arrange
-  MockExecuteFileCommand mock_command_shim{{{0, "/bin/testing"}}};
-
+/* --------------------------------- extract -------------------------------- */
+void testExtract() {
   // Act
-  std::string actual_fdupes_file = findFDupesCommand(mock_command_shim);
+  FileHashRows actual_file_hash_rows =
+      extractUsingCache(mockExtractDatabaseServices());
 
   // Assert
-  assert(actual_fdupes_file == "/bin/testing");
+  FileHashRows expected_file_hash_rows{MOCK_DIRECTORIES, MOCK_HASHES};
+  assert(actual_file_hash_rows == expected_file_hash_rows);
 }
 
-void testFindingFDupesStrips() {
+/* ------------------------------- buildCache ------------------------------- */
+void testBuildCacheResetsDB() {
   // Arrange
-  MockExecuteFileCommand mock_command_shim{{{0, "/bin/testing       "}}};
+  resetMockStates();
+  SVector test_paths = {"./dir1/", "../documents/dir2/"};
 
   // Act
-  std::string actual_fdupes_file = findFDupesCommand(mock_command_shim);
+  buildCache(test_paths, mockCacheDatabaseServices(),
+             mockCacheFileSystemServices());
 
   // Assert
-  assert(actual_fdupes_file == "/bin/testing");
+  assert(reset_db);
 }
 
-void testFindingFDupesCallsCorrectCommand() {
+void testBuildCacheCreatesDirectories() {
+  // home/testing/desktop/./dir1/
+  // home/testing/desktop/../documents/dir2/
+
+  // 1, testing -1
+  // 2, desktop 1
+  // 3, dir1, 2
+  // 4, testing, 3
+  // 5, test, 4
+  // 6, documents, 1,
+  // 7, dir2, 6,
+  // 8, testing, 7,
+  // 9  dir3, 7,
+  // 10, testing, 9,
+  // 11, test, 10
+
   // Arrange
-  MockExecuteFileCommand mock_command_shim{{{0, "/tests/fdupes"}}};
+  resetMockStates();
+  SVector test_paths = {"./dir1/", "../documents/dir2/"};
 
   // Act
-  findFDupesCommand(mock_command_shim);
+  buildCache(test_paths, mockCacheDatabaseServices(),
+             mockCacheFileSystemServices());
 
   // Assert
-  std::vector<std::string> expected_commands{"/bin/which which fdupes"};
-  assert(mock_command_shim.commands_executed == expected_commands);
+  std::vector<DirectoryInput> expected_created_directories{
+      {-1, "testing"}, {1, "desktop"},   {2, "dir1"},  {3, "testing"},
+      {4, "test"},     {1, "documents"}, {6, "dir2"},  {7, "testing"},
+      {7, "dir3"},     {9, "testing"},   {10, "test"},
+  };
+  assert(expected_created_directories == created_directories);
 }
 
-void testExceptionOnMissingFDupes() {
+void testBuildCacheCreatesHashes() {
   // Arrange
-  MockExecuteFileCommand mock_command_shim{{{1, ""}}};
-
-  // Act & Assert
-  try {
-    findFDupesCommand(mock_command_shim);
-    assert(false);
-  } catch (NoFDupesException& e) {
-    assert(true);
-  }
-}
-
-/* --------------------------- checkFDupesVersion --------------------------- */
-void testExceptionOnFailedFDupesVersionCommand() {
-  // Arrange
-  MockExecuteFileCommand mock_command_shim{{{1, ""}}};
-
-  // Act & Assert
-  try {
-    checkFDupesVersion("/bin/fdupes", mock_command_shim);
-    assert(false);
-  } catch (FDupesVersionException& e) {
-    assert(true);
-  }
-}
-
-void testExceptionOnInvalidVersionCommand() {
-  // Arrange
-  MockExecuteFileCommand mock_command_shim{{{0, "1.9.0"}}};
-
-  // Act & Assert
-  try {
-    checkFDupesVersion("/bin/fdupes", mock_command_shim);
-    assert(false);
-  } catch (InvalidVersionException& e) {
-    assert(true);
-  }
-}
-
-void testCheckingVersionCallsCorrectCommands() {
-  // Arrange
-  MockExecuteFileCommand mock_command_shim{{{0, "2.0.0"}}};
+  resetMockStates();
+  SVector test_paths = {"./dir1/", "../documents/dir2/"};
 
   // Act
-  checkFDupesVersion("/bin/fdupes", mock_command_shim);
+  buildCache(test_paths, mockCacheDatabaseServices(),
+             mockCacheFileSystemServices());
 
   // Assert
-  std::vector<std::string> expected_commands{{"/bin/fdupes fdupes --version"}};
-  assert(mock_command_shim.commands_executed == expected_commands);
+  std::vector<HashInput> expected_created_hashes{
+      {5, "example_one.txt", uniqueTestBlob()},
+      {5, "example_two.txt", uniqueTestBlob()},
+      {4, "example_three.txt", uniqueTestBlob()},
+      {4, "example_four.txt", uniqueTestBlob()},
+      {3, "example_five.txt", uniqueTestBlob()},
+      {7, "example_one.txt", uniqueTestBlob()},
+      {8, "example_two.txt", uniqueTestBlob()},
+      {8, "example_three.txt", uniqueTestBlob()},
+      {11, "example_four.txt", uniqueTestBlob()},
+  };
+  assert(expected_created_hashes == created_hashes);
 }
 
-/* ------------------------ extractVersionFromString ------------------------ */
-void testExtractingVersionFromString() {
+/* ---------------------------- tokenizeRootPath ---------------------------- */
+void testTokenizingPathWithRoot() {
   // Arrange
-  std::string test_fdupes_output = "1.0.2";
+  std::string test_path = "/";
 
   // Act
-  SemVer actual_version_output = extractVersionFromString(test_fdupes_output);
+  SVector tokenized_path = tokenizeRootPath(test_path);
 
-  // Assert
-  SemVer expected_version_output = {1, 0, 2};
-  assert(actual_version_output == expected_version_output);
+  // Arrange
+  SVector expected_tokenized_path{"/"};
+  assert(tokenized_path == expected_tokenized_path);
 }
 
-void testExtractingVersionWithToLittleNumbers() {
+void testTokenizingPathWithRootFolder() {
   // Arrange
-  std::string test_fdupes_output = "1.0";
-
-  // Act & Assert
-  try {
-    SemVer actual_version_output = extractVersionFromString(test_fdupes_output);
-    assert(false);
-  } catch (MissingVersionException& e) {
-    assert(true);
-  }
-}
-
-/* ---------------------------------- strip --------------------------------- */
-
-void testStripingAString() {
-  // Arrange
-  std::string test_string = "    test    ";
+  std::string test_path = "/testing";
 
   // Act
-  std::string actual_string = strip(test_string);
+  SVector tokenized_path = tokenizeRootPath(test_path);
 
-  // Assert
-  assert(actual_string == "test");
+  // Arrange
+  SVector expected_tokenized_path{"/", "testing"};
+  assert(tokenized_path == expected_tokenized_path);
 }
 
-/* ------------------------------ SemVer ------------------------------ */
-void testSemVerGreaterThanOrEqualTo() {
+void testTokenizingPathWithFile() {
   // Arrange
-  SemVer test_one{1, 0, 25};
-  SemVer test_two{2, 0, 25};
-
-  // Act & Assert
-  assert(test_two >= test_one);
-}
-
-void testSemVerEquality() {
-  // Arrange
-  SemVer test_one{1, 20, 25};
-  SemVer test_two{1, 20, 25};
-
-  // Act & Assert
-  assert(test_two == test_one);
-}
-
-/* ------------------------- executeFDupesCacheBuild ------------------------ */
-
-void testExecuteFDupesCallsCorrectCommands() {
-  // Arrange
-  MockExecuteFileCommand mock_command_shim({{0, ""}});
-  RelativePaths test_paths{"testing_dirs/dir1", "testing_dirs/dir2"};
+  std::string test_path = "/testing/testing.txt";
 
   // Act
-  executeFDupesCacheBuild("/bin/fdupes", test_paths, mock_command_shim);
+  SVector tokenized_path = tokenizeRootPath(test_path);
 
-  // Assert
-  std::vector<std::string> expected_commands{
-      "/bin/fdupes fdupes -r --cache -x cache.clear testing_dirs/dir1 "
-      "testing_dirs/dir2"};
-  assert(mock_command_shim.commands_executed == expected_commands);
-}
-
-void testExceptionOnFDupesCacheBuild() {
   // Arrange
-  MockExecuteFileCommand mock_command_shim({{1, ""}});
-  RelativePaths test_paths{"testing_dirs/dir1"};
-
-  // Act & Assert
-  try {
-    executeFDupesCacheBuild("/bin/fdupes", test_paths, mock_command_shim);
-    assert(false);
-  } catch (FailedFDupesCacheBuildException& e) {
-    assert(true);
-  }
+  SVector expected_tokenized_path{"/", "testing", "testing.txt"};
+  assert(tokenized_path == expected_tokenized_path);
 }
 
-/* ---------------------------- verifyCacheExists --------------------------- */
-class MockFileExistenceCheck : public FileExistenceCheck {
- public:
-  std::vector<std::string> files_checked;
-  MockFileExistenceCheck(std::vector<bool> exists_results)
-      : exists_results(exists_results) {};
-
-  bool check(const std::string& file_name) override;
-
- private:
-  std::vector<bool> exists_results;
-};
-
-bool MockFileExistenceCheck::check(const std::string& file_name) {
-  files_checked.push_back(file_name);
-  auto result = exists_results.back();
-  exists_results.pop_back();
-  return result;
-}
-
-void testCheckingTheFileForExistence() {
+void testTokenizingPathWithNestedFolders() {
   // Arrange
-  MockFileExistenceCheck mock_existence_check{{true}};
+  std::string test_path = "/testing/test";
 
   // Act
-  verifyCacheExists("/tmp/test.cache", mock_existence_check);
+  SVector tokenized_path = tokenizeRootPath(test_path);
 
-  // Assert
-  std::vector<std::string> expected_checked_files{"/tmp/test.cache"};
-  assert(mock_existence_check.files_checked == expected_checked_files);
+  // Arrange
+  SVector expected_tokenized_path{"/", "testing", "test"};
+  assert(tokenized_path == expected_tokenized_path);
 }
 
-void testExceptionOnNonExistingCache() {
+void testTokenizingWithTrailingSlash() {
   // Arrange
-  MockFileExistenceCheck mock_existence_check{{false}};
-
-  // Act & Assert
-  try {
-    verifyCacheExists("/tmp/test.cache", mock_existence_check);
-    assert(false);
-  } catch (CacheNotFoundException& e) {
-    assert(true);
-  }
-}
-
-/* ------------------------- loadDataFromSQLiteCache ------------------------ */
-template <class T>
-struct StepResults {
-  bool done;
-  T last_row_fetch_result;
-};
-
-template <class T>
-class MockDatabaseView : public TableView<T> {
- public:
-  std::vector<std::string> queries_executed;
-
-  MockDatabaseView(std::vector<StepResults<T>> step_outputs)
-      : step_results(step_outputs), queries_executed({}) {};
-
-  void prepare(std::string query) { queries_executed.push_back(query); }
-
-  bool step() {
-    auto step_result = step_results.front();
-    step_results.erase(step_results.begin());
-    TableView<T>::last_row_fetched = step_result.last_row_fetch_result;
-    return step_result.done;
-  }
-
- private:
-  std::vector<StepResults<T>> step_results;
-};
-
-typedef StepResults<DirectoryTableRow> DirectoryTableStep;
-typedef StepResults<HashTableRow> HashTableStep;
-
-const std::vector<StepResults<DirectoryTableRow>> mock_directory_view_responses{
-    DirectoryTableStep{true, {1, "test", 1}},
-    DirectoryTableStep{true, {1, "test_two", 1}},
-    DirectoryTableStep{false, {}}};
-
-const std::vector<StepResults<HashTableRow>> mock_hash_view_responses = {
-    HashTableStep{true, {1, "test", nullptr}},
-    HashTableStep{true, {1, "test_two", nullptr}},
-    HashTableStep{false, {1, "test_two", nullptr}}};
-
-void testLoadDateFromSQLite() {
-  // Arrange
-  MockDatabaseView<DirectoryTableRow> mock_directory_view{
-      mock_directory_view_responses};
-  MockDatabaseView<HashTableRow> mock_hash_view{mock_hash_view_responses};
+  std::string test_path = "/testing/test/";
 
   // Act
-  FileHashRows actual_rows = loadDataFromCache(
-      (TableView<DirectoryTableRow>* const)&mock_directory_view,
-      (TableView<HashTableRow>* const)&mock_hash_view);
+  SVector tokenized_path = tokenizeRootPath(test_path);
 
-  // Assert
-  FileHashRows expected_rows{
-      {DirectoryTableRow{1, "test", 1}, DirectoryTableRow{1, "test_two", 1}},
-      {HashTableRow{1, "test", nullptr}, HashTableRow{1, "test_two", nullptr}}};
-  assert(actual_rows == expected_rows);
+  // Arrange
+  SVector expected_tokenized_path{"/", "testing", "test"};
+  assert(tokenized_path == expected_tokenized_path);
 }
 
-void testLoadDateFromSQLiteCallsCorrectDirectoryQuery() {
+void testTokenizingNotAtRoot() {
   // Arrange
-  MockDatabaseView<DirectoryTableRow> mock_directory_view{
-      mock_directory_view_responses};
-  MockDatabaseView<HashTableRow> mock_hash_view{mock_hash_view_responses};
+  std::string test_path = "testing/test/example_one.txt";
 
   // Act
-  FileHashRows actual_rows = loadDataFromCache(
-      (TableView<DirectoryTableRow>* const)&mock_directory_view,
-      (TableView<HashTableRow>* const)&mock_hash_view);
+  SVector tokenized_path = tokenizeRootPath(test_path);
 
-  // Assert
-  std::vector<std::string> expected_queries = {"SELECT * FROM Directories;"};
-  assert(mock_directory_view.queries_executed == expected_queries);
+  // Arrange
+  SVector expected_tokenized_path{"/", "testing", "test", "example_one.txt"};
+  assert(tokenized_path == expected_tokenized_path);
 }
 
-void testLoadDateFromSQLiteCallsCorrectHashQuery() {
+void testTokenizingEmptyRoot() {
   // Arrange
-  MockDatabaseView<DirectoryTableRow> mock_directory_view{
-      mock_directory_view_responses};
-  MockDatabaseView<HashTableRow> mock_hash_view{mock_hash_view_responses};
+  std::string test_path = "";
 
   // Act
-  FileHashRows actual_rows = loadDataFromCache(
-      (TableView<DirectoryTableRow>* const)&mock_directory_view,
-      (TableView<HashTableRow>* const)&mock_hash_view);
+  SVector tokenized_path = tokenizeRootPath(test_path);
+
+  // Arrange
+  SVector expected_tokenized_path{};
+  assert(tokenized_path == expected_tokenized_path);
+}
+
+/* -------------------------- tokenizeRelativePath -------------------------- */
+void testTokenizingRelativePath() {
+  // Arrange
+  std::string test_path = "testing/test/example_one.txt";
+
+  // Act
+  SVector tokenized_path = tokenizeRelativePath(test_path);
+
+  // Arrange
+  SVector expected_tokenized_path{"testing", "test", "example_one.txt"};
+  assert(tokenized_path == expected_tokenized_path);
+}
+
+void testTokenizingRelativePathWithRootSlash() {
+  // Arrange
+  std::string test_path = "/testing/test/example_one.txt";
+
+  // Act
+  SVector tokenized_path = tokenizeRelativePath(test_path);
+
+  // Arrange
+  SVector expected_tokenized_path{"testing", "test", "example_one.txt"};
+  assert(tokenized_path == expected_tokenized_path);
+}
+
+void testTokenizingEmptyPath() {
+  // Arrange
+  std::string test_path = "";
+
+  // Act
+  SVector tokenized_path = tokenizeRelativePath(test_path);
+
+  // Arrange
+  SVector expected_tokenized_path{};
+  assert(tokenized_path == expected_tokenized_path);
+}
+
+/* ---------------------------- countShortestPath --------------------------- */
+void testCountShortestPath() {
+  // Arrange
+  std::vector<SVector> shortest_paths{{"/", "testing", "test"},
+                                      {"/", "testing"},
+                                      {"/", "testing", "test", "testing_this"}};
+
+  // Act
+  int shortest_path = countShortestTokenizePath(shortest_paths);
+
+  // Arrange
+  assert(shortest_path == 2);
+}
+
+void testCountShortestPathWithEmptyDir() {
+  // Arrange
+  std::vector<SVector> shortest_paths{
+      {"/", "testing", "test"}, {}, {"/", "testing", "test", "testing_this"}};
+
+  // Act
+  int shortest_path = countShortestTokenizePath(shortest_paths);
+
+  // Arrange
+  assert(shortest_path == 0);
+}
+
+/* ------------------------------ calcRootPath ------------------------------ */
+void testCalcRootPath() {
+  // Arrange
+  SVector test_arguments{"dir1/testing/test", "dir2/testing"};
+
+  // Act
+  RootCalcResult actual_argument_paths =
+      calcRootPath(test_arguments, mockCacheFileSystemServices());
 
   // Assert
-  std::vector<std::string> expected_queries = {"SELECT * FROM Hashes;"};
-  assert(mock_hash_view.queries_executed == expected_queries);
+  RootCalcResult expected_argument_paths{
+      .root_path = "desktop",
+      {{"dir1/testing/test", {"dir1", "testing", "test"}},
+       {"dir2/testing", {"dir2", "testing"}}}};
+  assert(actual_argument_paths == expected_argument_paths);
+}
+
+void testCalcRootWithEmpty() {
+  // Arrange
+  SVector test_arguments{"", "dir2/testing"};
+
+  // Act
+  RootCalcResult actual_argument_paths =
+      calcRootPath(test_arguments, mockCacheFileSystemServices());
+
+  // Assert
+  RootCalcResult expected_argument_paths{
+      .root_path = "desktop",
+      {{"", {}}, {"dir2/testing", {"dir2", "testing"}}}};
+  assert(actual_argument_paths == expected_argument_paths);
+}
+
+/* ------------------------------ ArgumentPath ------------------------------ */
+void testArgumentPathsEquality() {
+  // Arrange
+  ArgumentPath test_args_one{"dir1/testing/test", {"dir1", "testing", "test"}};
+  ArgumentPath test_args_two{"dir1/testing/test", {"dir1", "testing", "test"}};
+
+  // Act
+  bool equality_check = test_args_one == test_args_two;
+
+  // Assert
+  assert(equality_check);
+}
+
+/* ----------------------------- RootCalcResult ----------------------------- */
+void testRootCalcResultEquality() {
+  // Arrange
+  RootCalcResult test_paths_one{
+      .root_path = "desktop",
+      {{"dir1/testing/test", {"dir1", "testing", "test"}},
+       {"dir2/testing", {"dir2", "testing"}}}};
+  RootCalcResult test_paths_two{
+      .root_path = "desktop",
+      {{"dir1/testing/test", {"dir1", "testing", "test"}},
+       {"dir2/testing", {"dir2", "testing"}}}};
+
+  // Act
+  bool equality_check = test_paths_one == test_paths_two;
+
+  // Assert
+  assert(equality_check);
+}
+
+/* ------------------------ removeLeadingRelativePath ----------------------- */
+void testRemoveLeadingRelativePath() {
+  // Assert
+  std::string test_leading_relative_path = "../dir1/./dir2";
+  std::string test_file_path = "../dir1/./dir2/testing/this/out";
+
+  // Act
+  std::string actual_path_without_leading =
+      removeLeadingRelativePath(test_leading_relative_path, test_file_path);
+
+  // Assert
+  std::string expected_path = "/testing/this/out";
+  assert(expected_path == actual_path_without_leading);
 }
 
 /* -------------------------------------------------------------------------- */
 /*                                    Main                                    */
 /* -------------------------------------------------------------------------- */
 int main() {
-  testFindingFDupes();
-  testFindingFDupesStrips();
-  testFindingFDupesCallsCorrectCommand();
-  testExceptionOnMissingFDupes();
-  testExceptionOnFailedFDupesVersionCommand();
-  testExceptionOnInvalidVersionCommand();
-  testCheckingVersionCallsCorrectCommands();
-  testExtractingVersionFromString();
-  testExtractingVersionWithToLittleNumbers();
-  testStripingAString();
-  testSemVerGreaterThanOrEqualTo();
-  testSemVerEquality();
-  testExecuteFDupesCallsCorrectCommands();
-  testCheckingTheFileForExistence();
-  testExceptionOnNonExistingCache();
-  testLoadDateFromSQLite();
-  testLoadDateFromSQLiteCallsCorrectDirectoryQuery();
-  testLoadDateFromSQLiteCallsCorrectHashQuery();
+  testExtract();
+  testBuildCacheResetsDB();
+  testBuildCacheCreatesDirectories();
+  testBuildCacheCreatesHashes();
+  testTokenizingPathWithRoot();
+  testTokenizingPathWithRootFolder();
+  testTokenizingPathWithFile();
+  testTokenizingPathWithNestedFolders();
+  testTokenizingWithTrailingSlash();
+  testTokenizingNotAtRoot();
+  testTokenizingEmptyRoot();
+  testTokenizingRelativePathWithRootSlash();
+  testTokenizingRelativePath();
+  testTokenizingEmptyPath();
+  testCountShortestPath();
+  testCountShortestPathWithEmptyDir();
+  testCalcRootPath();
+  testCalcRootWithEmpty();
+  testArgumentPathsEquality();
+  testRootCalcResultEquality();
+  testRemoveLeadingRelativePath();
 }

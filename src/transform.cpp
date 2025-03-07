@@ -4,24 +4,15 @@
 
 #include <queue>
 
-std::string DirectoryNode::getName() const { return name; }
+#include "constants.h"
 
-FileNode::Files DirectoryNode::getFiles() const { return files; }
-
-DirectoryNode::Directories DirectoryNode::getDirectories() const {
-  return directories;
-}
-
+/* -------------------------------------------------------------------------- */
+/*                               Data Structures                              */
+/* -------------------------------------------------------------------------- */
 bool DirectoryNode::operator==(const DirectoryNode &rhs) const {
   return rhs.directories == directories && rhs.files == files &&
          rhs.name == name;
 }
-
-std::string HashNode::getName() const { return name; }
-
-Hash HashNode::getHash() const { return hash; }
-
-HashNode::HashedNodes HashNode::getHashedNodes() const { return hashed_nodes; }
 
 bool HashNode::operator==(const HashNode &rhs) const {
   return rhs.hashed_nodes == hashed_nodes && rhs.hash == hash &&
@@ -32,28 +23,9 @@ bool HashPathSegment::operator==(const HashPathSegment &rhs) const {
   return rhs.hash_string == hash_string && rhs.path_segment == path_segment;
 }
 
-Hash computeHash(Hashes hashes) {
-  EVP_MD_CTX *md_context;
-  unsigned char *md5_digest;
-  unsigned int md5_digest_len = EVP_MD_size(EVP_md5());
-
-  md_context = EVP_MD_CTX_new();
-  EVP_DigestInit_ex(md_context, EVP_md5(), nullptr);
-
-  for (const Hash file_hash : hashes) {
-    EVP_DigestUpdate(md_context, file_hash.data(), file_hash.size());
-  }
-
-  md5_digest = (unsigned char *)OPENSSL_malloc(md5_digest_len);
-  EVP_DigestFinal_ex(md_context, md5_digest, &md5_digest_len);
-  EVP_MD_CTX_free(md_context);
-
-  std::vector<uint8_t> hash_of_hashes(md5_digest, md5_digest + md5_digest_len);
-
-  OPENSSL_free(md5_digest);
-  return hash_of_hashes;
-}
-
+/* -------------------------------------------------------------------------- */
+/*                           Building Directory Map                           */
+/* -------------------------------------------------------------------------- */
 DirectoryRowIdMap buildDirectoryRowIdMap(
     const DirectoryTableRow::Rows &directory_table_rows) {
   DirectoryRowIdMap directory_id_map;
@@ -98,13 +70,12 @@ FileNode::Files mergeTwoFileLists(const FileNode::Files &files_one,
   FileNode::Files merged_files = files_one;
 
   for (const FileNode &file : merged_files) {
-    files_already_merged[file.getName()] = true;
+    files_already_merged[file.name] = true;
   }
 
   for (const FileNode &file : files_two) {
     // The file does not exist in the list.
-    if (files_already_merged.find(file.getName()) ==
-        files_already_merged.end()) {
+    if (files_already_merged.find(file.name) == files_already_merged.end()) {
       merged_files.push_back(file);
     }
   }
@@ -119,15 +90,14 @@ DirectoryNode::Directories mergeTwoDirectoryLists(
   DirectoryNode::Directories merged_directories = directories_one;
 
   for (unsigned int i = 0; i < merged_directories.size(); i++) {
-    merged_directories_index[merged_directories[i].getName()] = i;
+    merged_directories_index[merged_directories[i].name] = i;
   }
 
   for (const DirectoryNode &directory_node : directories_two) {
     // Directory already in the merged_directories.
-    if (merged_directories_index.find(directory_node.getName()) !=
+    if (merged_directories_index.find(directory_node.name) !=
         merged_directories_index.end()) {
-      unsigned int merged_index =
-          merged_directories_index[directory_node.getName()];
+      unsigned int merged_index = merged_directories_index[directory_node.name];
       DirectoryNode &directory_already_merged =
           merged_directories[merged_index];
       merged_directories[merged_index] =
@@ -143,19 +113,19 @@ DirectoryNode::Directories mergeTwoDirectoryLists(
 
 DirectoryNode mergeTwoDirectoryNodes(const DirectoryNode &directory_node_one,
                                      const DirectoryNode &directory_node_two) {
-  if (directory_node_one.getName() != directory_node_two.getName()) {
+  if (directory_node_one.name != directory_node_two.name) {
     return DirectoryNode{""};
   }
 
-  FileNode::Files node_one_files = directory_node_one.getFiles();
+  FileNode::Files node_one_files = directory_node_one.files;
   DirectoryNode::Directories node_one_directories =
-      directory_node_one.getDirectories();
-  FileNode::Files node_two_files = directory_node_two.getFiles();
+      directory_node_one.directories;
+  FileNode::Files node_two_files = directory_node_two.files;
   DirectoryNode::Directories node_two_directories =
-      directory_node_two.getDirectories();
+      directory_node_two.directories;
 
   return DirectoryNode{
-      directory_node_one.getName(),
+      directory_node_one.name,
       mergeTwoFileLists(node_one_files, node_two_files),
       mergeTwoDirectoryLists(node_one_directories, node_two_directories)};
 }
@@ -179,14 +149,39 @@ DirectoryNode buildDirectoryTree(
   return tree;
 }
 
+/* -------------------------------------------------------------------------- */
+/*                             Computing Hash Tree                            */
+/* -------------------------------------------------------------------------- */
 Hash computeHashNodesHash(const HashNode::HashedNodes nodes) {
   Hashes hashes = {};
 
   for (const HashNode &hash_node : nodes) {
-    hashes.push_back(hash_node.getHash());
+    hashes.push_back(hash_node.hash);
   }
 
   return computeHash(hashes);
+}
+
+Hash computeHash(Hashes hashes) {
+  EVP_MD_CTX *md_context;
+  unsigned char *md5_digest;
+  unsigned int md5_digest_len = EVP_MD_size(EVP_md5());
+
+  md_context = EVP_MD_CTX_new();
+  EVP_DigestInit_ex(md_context, EVP_md5(), nullptr);
+
+  for (const Hash file_hash : hashes) {
+    EVP_DigestUpdate(md_context, file_hash.data(), file_hash.size());
+  }
+
+  md5_digest = (unsigned char *)OPENSSL_malloc(md5_digest_len);
+  EVP_DigestFinal_ex(md_context, md5_digest, &md5_digest_len);
+  EVP_MD_CTX_free(md_context);
+
+  std::vector<uint8_t> hash_of_hashes(md5_digest, md5_digest + md5_digest_len);
+
+  OPENSSL_free(md5_digest);
+  return hash_of_hashes;
 }
 
 HashNode::HashedNodes buildHashNodes(const FileNode::Files &file_nodes) {
@@ -200,21 +195,24 @@ HashNode::HashedNodes buildHashNodes(const FileNode::Files &file_nodes) {
 }
 
 HashNode buildHashNode(const DirectoryNode &directory_node) {
-  HashNode::HashedNodes hash_nodes = buildHashNodes(directory_node.getFiles());
+  HashNode::HashedNodes hash_nodes = buildHashNodes(directory_node.files);
 
-  if (directory_node.getDirectories().size() == 0) {
-    return HashNode{directory_node.getName(), computeHashNodesHash(hash_nodes),
+  if (directory_node.directories.size() == 0) {
+    return HashNode{directory_node.name, computeHashNodesHash(hash_nodes),
                     hash_nodes};
   }
 
-  for (const DirectoryNode &directory_node : directory_node.getDirectories()) {
+  for (const DirectoryNode &directory_node : directory_node.directories) {
     hash_nodes.push_back(buildHashNode(directory_node));
   }
 
-  return HashNode{directory_node.getName(), computeHashNodesHash(hash_nodes),
+  return HashNode{directory_node.name, computeHashNodesHash(hash_nodes),
                   hash_nodes};
 }
 
+/* -------------------------------------------------------------------------- */
+/*                               Finding Hashes                               */
+/* -------------------------------------------------------------------------- */
 std::string buildStringFromHash(const Hash &hash) {
   std::string hash_string = "";
 
@@ -260,15 +258,14 @@ HashToDuplicateNodes buildHashToDuplicateNodesMap(const HashNode &hash_node) {
     HashNode next_hash_node = hash_queue.front();
     hash_queue.pop();
 
-    std::string current_hash_string =
-        buildStringFromHash(next_hash_node.getHash());
+    std::string current_hash_string = buildStringFromHash(next_hash_node.hash);
     HashPath current_path = popOffParentPathQueue(parent_path);
-    current_path.push_back({next_hash_node.getName(), current_hash_string});
+    current_path.push_back({next_hash_node.name, current_hash_string});
 
     addHashStringToHashDuplicateNodesMap(current_hash_string, current_path,
                                          hash_to_duplicate_nodes);
 
-    for (const HashNode &child_hash_node : next_hash_node.getHashedNodes()) {
+    for (const HashNode &child_hash_node : next_hash_node.hashed_nodes) {
       hash_queue.emplace(child_hash_node);
       parent_path.emplace(current_path);
     }
@@ -348,6 +345,9 @@ void filterSharedHashNodes(HashToDuplicateNodes &hash_to_duplicate_nodes) {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/*                                   Output                                   */
+/* -------------------------------------------------------------------------- */
 SVector buildPathsFromHashPath(const HashPath &path) {
   SVector paths = {};
 

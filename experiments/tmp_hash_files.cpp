@@ -12,7 +12,8 @@
 namespace fs = std::filesystem;
 
 constexpr unsigned int MD5_HASH_LENGTH = 16;
-
+// CHATGPT code
+// ---------------------
 std::ifstream openFile(std::string filePath) {
   std::ifstream file(filePath, std::ios::binary);
   if (!file) {
@@ -46,7 +47,6 @@ void computeFileHash(uint8_t* hash_buffer, std::ifstream& file) {
   OPENSSL_free(md5_digest);
 }
 
-// Function to traverse directory and hash files
 void hashFilesInDirectory(const std::string& directoryPath) {
   for (const auto& entry : fs::recursive_directory_iterator(directoryPath)) {
     entry.~directory_entry if (fs::is_regular_file(entry.path())) {
@@ -65,13 +65,36 @@ void hashFilesInDirectory(const std::string& directoryPath) {
     }
   }
 }
+// ---------------------
 
-template <class T>
+/**
+ * The Cache ETL process contains the following steps:
+ * - Load the files from the the file system and the type! (Extract)
+ * - If Statement for type (Extract)
+ *    - If file then extract directory id, and file hash (Transform)
+ *      - Create file hash struct (Transform)
+ *      - Put into the has database (Load)
+ *    - If directory then extract directory id (Transform)
+ *      - Create the directory hash struct. (Transform)
+ *      - Put into the database (Load)
+ *
+ * - Here we have a classic case of E(Loop), T, L where you do the transormation
+ * and loading in each entry then fetch the next one.
+ * - I have two processes here. First we create the cache, then we load from the
+ * cache and compute directory hashes.
+ * - Another option could be doing a post-order DFS as part of the EXTRACT
+ * phase, then my transformation and load phases also compute the directory
+ * hash. This removes the need to recreate this tree in memory.
+ * - I could improve this by keeping a reference to the directory insert on a
+ * stack.
+ */
+
 void visitFiles(const std::string& directory_path,
                 void (*fileNodeCallback)(const std::string, const T),
-                const T& services) {
+                const(*void) services) {
   for (const auto& entry : fs::recursive_directory_iterator(directory_path)) {
-    fileNodeCallback(entry.path(), services)
+    FileType file_type =  // IF directory then load directory.
+        fileNodeCallback(entry.path(), file_type, services)
   }
 }
 
@@ -79,19 +102,23 @@ struct CacheServices {
   bool (*fileCheck)(std::string);
   bool (*directoryCheck)(std::string);
   void (*extractHash)(uint8_t* hash, std::string);
-  DirectoryTableGateway& directory_table_gateway;
-  FileTableGateway& file_table_gateway;
+  DirectoryTableGateway&
+      directory_table_gateway;  // These can be pointers (although it becomes a
+                                // pain in the butt to carry around the
+                                // reference to the db if these are just
+                                // callbacks.)
+  FileTableGateway& file_table_gateway;  // These can be pointers.
 }
 
-// Extract Code
-// We need to inject the database in here as well.
-
-// I could improve this by keeping a reference to the directory insert on a stack.
-
+enum FileType {
+  DIRECTORY = 1,
+  FILE = 2,
+}
 
 // This is my code. It interacts with no services except those passed in.
 void fileNodeCallback(
-    std::string path, CacheServices services) {
+    std::string path, FileType file_type, (void*) services) {
+  const CacheServices cache_services = (CacheServices*)services;
   const unsigned int directory_id =
       services.directory_table_gateway.getByName(path);
   const std::string name = "testing";
@@ -124,18 +151,3 @@ int main() {
 
   return 0;
 }
-
-/**
- * The Cache ETL process contains the following steps:
- *
- * - Load the files from the the file system. (Extract)
- * - If Statement for type (Extract)
- *    - If file then extract directory id, and file hash (Extract)
- *      - Create file hash struct (Transform)
- *      - Put into the has database (Load)
- *    - If directory then extract directory id (Extract)
- *      - Create the directory hash struct. (Transform)
- *      - Put into the database (Load)
- *
- *
- */

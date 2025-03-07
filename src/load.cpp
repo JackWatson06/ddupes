@@ -72,19 +72,19 @@ bool comparePath(const SVector &path_one, const SVector &path_two) {
 }
 
 int countShortestPath(const Paths &paths) {
-    if (paths.size() == 0) {
-      return 0;
-    }
-  
-    int shortest_vector = paths[0].size();
-    for (const SVector &vector : paths) {
-      if (vector.size() < shortest_vector) {
-        shortest_vector = vector.size();
-      }
-    }
-  
-    return shortest_vector;
+  if (paths.size() == 0) {
+    return 0;
   }
+
+  int shortest_vector = paths[0].size();
+  for (const SVector &vector : paths) {
+    if (vector.size() < shortest_vector) {
+      shortest_vector = vector.size();
+    }
+  }
+
+  return shortest_vector;
+}
 
 bool shortestPathAndLeastCount(const Paths &paths_one, const Paths &paths_two) {
   int path_one_shortest_count = countShortestPath(paths_one);
@@ -110,8 +110,7 @@ void sortDuplicateINodesSet(DuplicateINodesSet &duplicate_i_nodes_set) {
   }
 }
 
-void load(std::ostream &console,
-          DuplicateINodesSet &duplicate_i_nodes_set) {
+void load(std::ostream &console, DuplicateINodesSet &duplicate_i_nodes_set) {
   sortDuplicateINodesSet(duplicate_i_nodes_set);
   const DuplicateINodeOutput duplicate_i_nodes_output =
       joinDuplicateINodePaths(duplicate_i_nodes_set, '/');

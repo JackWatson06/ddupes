@@ -29,16 +29,6 @@ type. The object will already be constructed. When it's passed in.
 /**
 ** TODO **
 - Fix this logic error:
-
-When running the command with the directory inputs: "tests/testing_dirs/dir2",
-"tests/testing_dirs/dir3", "tests/testing_dirs/dir1"
-
-I get this output.
-//home/jack/WorkingDirectory/ddupes/tests/testing_dirs/dir1/sub_dir
-//home/jack/WorkingDirectory/ddupes/tests/testing_dirs/dir2/sub_dir
-
-This is not true. dir1/sub_dir has two files and dir2/sub_dir only has one file.
-
 - Remove the SQLLite cache at the end.
 - Having a filter to return the folder I am specifically looking at would be
 wonderful.
@@ -48,16 +38,23 @@ file.
 - Improve error handling for sqlite
 - Do a map of the .h file dependencies
 - Double check the nullptr check for the hash check.
+- Create a new hash type which has a == operator.
 */
+
+int buildHashCache() {}
+
+int checkForDuplicates() {
+  FileHashRows extraction_results =
+      extract({"tests/testing_dirs/dir2", "tests/testing_dirs/dir3",
+               "tests/testing_dirs/dir1"},
+              "/home/jack/.cache/fdupes/hash.db");
+  DuplicateINodesSet transformation_results = transform(extraction_results);
+  load(std::cout, transformation_results);
+}
 
 int main() {
   try {
-    FileHashRows extraction_results =
-        extract({"tests/testing_dirs/dir2", "tests/testing_dirs/dir3",
-                 "tests/testing_dirs/dir1"},
-                "/home/jack/.cache/fdupes/hash.db");
-    DuplicateINodesSet transformation_results = transform(extraction_results);
-    load(std::cout, transformation_results);
+    checkForDuplicates();
   } catch (const std::runtime_error& e) {
     std::cerr << e.what() << std::endl;
   }
