@@ -8,9 +8,9 @@
 #include <filesystem>
 #include <fstream>
 
-#include "../constants.h"
+#include "../lib.h"
 
-std::string qualifyRelativeURL(std::string& relative_path) {
+std::string qualifyRelativeURL(std::string &relative_path) {
   std::string canonicalized_path = realpath(relative_path.c_str(), 0);
   return std::string(std::filesystem::absolute(canonicalized_path).c_str());
 }
@@ -20,14 +20,14 @@ int testing() { return 5; }
 std::ifstream openFile(std::string filePath) {
   std::ifstream file(filePath, std::ios::binary);
   if (!file) {
-    throw FileOpenError("Could not open the file: " + filePath);
+    throw file_open_error("Could not open the file: " + filePath);
   }
   return file;
 }
 
-void visitFiles(const std::string& directory_path, FileVisitorCallback callback,
-                void* context) {
-  for (const auto& entry :
+void visitFiles(const std::string &directory_path,
+                file_visitor_callback callback, void *context) {
+  for (const auto &entry :
        std::filesystem::recursive_directory_iterator(directory_path)) {
     if (std::filesystem::is_regular_file(entry.path())) {
       callback(entry.path(), FILE_TYPE_FILE, context);
@@ -38,12 +38,13 @@ void visitFiles(const std::string& directory_path, FileVisitorCallback callback,
   }
 }
 
-void extractHash(uint8_t* hash, std::string path) {
+void extractHash(hash hash, std::string path) {
   std::ifstream file = openFile(path);
-  EVP_MD_CTX* md_context;
-  unsigned char* md5_digest;
+  EVP_MD_CTX *md_context;
+  unsigned char *md5_digest;
   unsigned int md5_digest_length = MD5_DIGEST_LENGTH;
-  const int BUFFER_SIZE = 4096;
+  const int BUFFER_SIZE =
+      4194304; // This should give us an stack overflow error.
   char buffer[BUFFER_SIZE];
 
   md_context = EVP_MD_CTX_new();
@@ -53,7 +54,7 @@ void extractHash(uint8_t* hash, std::string path) {
     EVP_DigestUpdate(md_context, buffer, file.gcount());
   }
 
-  md5_digest = (unsigned char*)OPENSSL_malloc(md5_digest_length);
+  md5_digest = (unsigned char *)OPENSSL_malloc(md5_digest_length);
   EVP_DigestFinal_ex(md_context, md5_digest, &md5_digest_length);
   EVP_MD_CTX_free(md_context);
 

@@ -29,7 +29,8 @@ type. The object will already be constructed. When it's passed in.
 */
 
 /**
-** TODO **
+** TODO: **
+- Improve file reading speed.
 - Fix this logic error:
 - Remove the SQLLite cache at the end.
 - Having a filter to return the folder I am specifically looking at would be
@@ -37,58 +38,41 @@ wonderful.
 - How can we get the home directory of the current user when finding the hash.db
 file.
 - Improve error handling for sqlite
-- Do a map of the .h file dependencies
-- Double check the nullptr check for the hash check.
-- Create a new hash type which has a == operator.
-- Create a path and hash library.
+- Do a map of the .h file dependencies.
 */
-
-// CreateCacheDatabaseServices mockCacheDatabaseServices() {
-//   return {nullptr, mockResetDB, mockCreateDirectory, mockCreateHash};
-// }
-
-// ExtractDatabaseServices mockExtractDatabaseServices() {
-//   return {nullptr, mockFetchAllDirectories, mockFetchAllHashes};
-// }
-
-// CreateCacheFileSystemServices mockCacheFileSystemServices() {
-//   return {mockQualifyRelativePath, mockVisitFiles, mockExtractHash};
-// }
-
-// int buildHashCache() {}
-
-// int checkForDuplicates() {
-//   FileHashRows extraction_results =
-//       extract({"tests/testing_dirs/dir2", "tests/testing_dirs/dir3",
-//                "tests/testing_dirs/dir1"},
-//               "/home/jack/.cache/fdupes/hash.db");
-//   DuplicateINodesSet transformation_results = transform(extraction_results);
-//   load(std::cout, transformation_results);
-// }
 
 int main() {
   try {
-    SVector paths = {"tests/testing_dirs/dir1", "tests/testing_dirs/dir2",
-                     "tests/testing_dirs/dir3", "tests/testing_dirs/dir4"};
-    sqlite3* db = initDB("testing.hash");
+    string_vector paths = {"tests/testing_dirs/dir1",
+                           "tests/testing_dirs/dir2"};
+    sqlite3 *db = initDB("testing.hash");
 
-    buildCache(
-        paths,
-        CreateCacheDatabaseServices{.db = db,
-                                    .resetDB = resetDB,
-                                    .createDirectory = createDirectory,
-                                    .createHash = createHash},
-        CreateCacheFileSystemServices{.qualifyRelativePath = qualifyRelativeURL,
-                                      .visitFiles = visitFiles,
-                                      .extractHash = extractHash});
+    buildCache(paths,
+               create_cache_database_service{.db = db,
+                                             .resetDB = resetDB,
+                                             .createDirectory = createDirectory,
+                                             .createHash = createHash},
+               create_cache_file_system_service{.qualifyRelativePath =
+                                                    qualifyRelativeURL,
+                                                .visitFiles = visitFiles,
+                                                .extractHash = extractHash});
 
-    FileHashRows extraction_results = extractUsingCache(
-        ExtractDatabaseServices{.db = db,
-                                .fetchAllDirectories = fetchAllDirectories,
-                                .fetchAllHashes = fetchAllHashes});
-    DuplicateINodesSet transformation_results = transform(extraction_results);
+    file_hash_rows extraction_results = extractUsingCache(
+        extract_database_service{.db = db,
+                                 .fetchAllDirectories = fetchAllDirectories,
+                                 .fetchAllHashes = fetchAllHashes});
+    std::cout
+        << "Done extracting the files from the SQLite Cache. Total Directories "
+        << extraction_results.directory_rows.size()
+        << " Total Hashes: " << extraction_results.hash_rows.size() << '\n'
+        << std::endl;
+    duplicate_path_seg_set transformation_results =
+        transform(extraction_results);
+
     load(std::cout, transformation_results);
-  } catch (const std::runtime_error& e) {
+
+    freeDB(db);
+  } catch (const std::runtime_error &e) {
     std::cerr << e.what() << std::endl;
   } catch (...) {
     std::cerr << "Unexpected error." << std::endl;

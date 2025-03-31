@@ -5,10 +5,10 @@
 /* ------------------------------ FileHashRows ------------------------------ */
 void testFileHashRowsEqualOperator() {
   // Arrange
-  FileHashRows test_one{{DirectoryTableRow{1, "test", 1}},
-                        {HashTableRow{1, "test", nullptr}}};
-  FileHashRows test_two{{DirectoryTableRow{1, "test", 1}},
-                        {HashTableRow{1, "test", nullptr}}};
+  file_hash_rows test_one{{directory_table_row{1, "test", 1}},
+                          {hash_table_row{1, "test", nullptr}}};
+  file_hash_rows test_two{{directory_table_row{1, "test", 1}},
+                          {hash_table_row{1, "test", nullptr}}};
 
   // Act
   bool equality_test = test_one == test_two;

@@ -3,108 +3,48 @@
 #include <unordered_map>
 
 #include "./extract_output.h"
+#include "./lib.h"
 #include "./transform_output.h"
 
-/* -------------------------------------------------------------------------- */
-/*                          Data Structures and Types                         */
-/* -------------------------------------------------------------------------- */
-typedef std::vector<uint8_t> Hash;
-typedef std::vector<Hash> Hashes;
+typedef std::vector<directory_table_row_const *> *parent_directory_map;
+typedef std::vector<directory_table_row_const *> const
+    *const parent_directory_map_const;
+// TODO How do I type these as const?
+typedef std::vector<hash_table_row_const *> *parent_hash_map;
+typedef std::vector<hash_table_row_const *> const *const parent_hash_map_const;
 
-struct HashPathSegment {
-  std::string path_segment;
-  std::string hash_string;
+struct inode {
+  int depth;
+  char const *path_segment;
+  hash node_hash;
+  std::vector<inode> inodes;
+  inode const *parent_node;
 
-  bool operator==(const HashPathSegment &rhs) const;
+  bool operator==(inode const &rhs) const;
 };
 
-typedef std::vector<HashPathSegment> HashPath;
-typedef std::vector<HashPath> DuplicatePaths;
-typedef std::unordered_map<std::string, DuplicatePaths> DuplicatePathsMap;
-
-struct HashToDuplicateNodes {
-  DuplicatePathsMap map;
-  std::list<std::string> order;
+struct inode_hasher {
+  std::size_t operator()(hash_const k) const;
 };
 
-typedef std::unordered_map<unsigned int, const DirectoryTableRow *>
-    DirectoryRowIdMap;
-
-struct HashNode {
-  typedef std::vector<HashNode> HashedNodes;
-
-  std::string name;
-  Hash hash;
-  HashedNodes hashed_nodes;
-
-  HashNode(std::string name, Hash hash, HashedNodes nodes = {})
-      : name(name), hash(hash), hashed_nodes(nodes) {}
-  HashNode() : HashNode("", {}) {}
-  bool operator==(const HashNode &rhs) const;
+struct inode_key_equal {
+  bool operator()(hash_const lhs, hash_const rhs) const;
 };
 
-struct FileNode : public HashNode {
- public:
-  typedef std::vector<FileNode> Files;
+typedef std::unordered_map<hash, std::vector<inode const *>, inode_hasher,
+                           inode_key_equal>
+    hash_inode_map;
 
-  FileNode(std::string name, Hash hash) : HashNode(name, hash, {}) {}
-};
-
-struct DirectoryNode {
-  typedef std::vector<DirectoryNode> Directories;
-  std::string name;
-  FileNode::Files files;
-  Directories directories;
-
-  DirectoryNode(std::string name, FileNode::Files files = {},
-                Directories directories = {})
-      : name(name), files(files), directories(directories) {}
-  DirectoryNode() : DirectoryNode("") {}
-  bool operator==(const DirectoryNode &rhs) const;
-};
-
-/* -------------------------------------------------------------------------- */
-/*                           Building Directory Map                           */
-/* -------------------------------------------------------------------------- */
-DirectoryRowIdMap buildDirectoryRowIdMap(
-    const DirectoryTableRow::Rows &directory_table_rows);
-Hash blobToHash(const void *blob);
-DirectoryNode buildFileNodeBranch(const HashTableRow &hash_result,
-                                  const DirectoryRowIdMap &directory_results);
-FileNode::Files mergeTwoFileLists(const FileNode::Files &files_one,
-                                  const FileNode::Files &files_two);
-DirectoryNode::Directories mergeTwoDirectoryLists(
-    const DirectoryNode::Directories &directories_one,
-    const DirectoryNode::Directories &directories_two);
-DirectoryNode mergeTwoDirectoryNodes(const DirectoryNode &tree_one,
-                                     const DirectoryNode &tree_two);
-DirectoryNode buildDirectoryTree(const HashTableRow::Rows &hash_results,
-                                 const DirectoryRowIdMap &directory_results);
-
-/* -------------------------------------------------------------------------- */
-/*                             Computing Hash Tree                            */
-/* -------------------------------------------------------------------------- */
-Hash computeHashNodesHash(const HashNode::HashedNodes nodes);
-Hash computeHash(Hashes file_hashes);
-HashNode::HashedNodes buildHashNodes(const FileNode::Files &file_nodes);
-HashNode buildHashNode(const DirectoryNode &directory_node);
-
-/* -------------------------------------------------------------------------- */
-/*                               Finding Hashes                               */
-/* -------------------------------------------------------------------------- */
-HashToDuplicateNodes buildHashToDuplicateNodesMap(const HashNode &hash_node);
-std::string buildStringFromHash(const Hash &hash);
-void filterNonDuplicatesFromDupNodesMap(
-    HashToDuplicateNodes &hash_to_duplicate_nodes);
-int countShortestDuplicatePath(const DuplicatePaths &duplicate_paths);
-bool hasSharedParent(const DuplicatePaths &paths,
-                     const DuplicatePathsMap &hash_to_duplicate_nodes);
-void filterSharedHashNodes(HashToDuplicateNodes &hash_to_duplicate_nodes);
-
-/* -------------------------------------------------------------------------- */
-/*                                   Output                                   */
-/* -------------------------------------------------------------------------- */
-SVector buildPathsFromHashPath(const HashPath &path);
-DuplicateINodesSet buildDuplicateINodeSet(
-    const DuplicatePathsMap &duplicate_nodes);
-DuplicateINodesSet transform(const FileHashRows &file_hash_rows);
+parent_directory_map buildParentDirectoryMap(directory_table_row::rows const &);
+parent_hash_map buildParentHashMap(hash_table_row::rows const &, int);
+inode buildINodeTree(parent_directory_map_const, parent_hash_map_const,
+                     directory_table_row_const *const, int = 1);
+hash_inode_map *calculateHashes(inode &directory_tree);
+int countShortestDepth(std::vector<inode const *> const &);
+std::vector<inode const *>
+fastForwardINodeReferences(std::vector<inode const *> const);
+duplicate_path_segments buildDuplicatePathSegments(
+    std::vector<inode const *> const &duplicate_inode_references);
+duplicate_path_seg_set filterNonDupsAndNestedHashes(inode const &,
+                                                    hash_inode_map *);
+duplicate_path_seg_set transform(file_hash_rows const &);

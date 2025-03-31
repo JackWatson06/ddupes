@@ -4,23 +4,23 @@
 #include <string>
 #include <vector>
 
-#include "../src/constants.h"
 #include "../src/fs/file_system.h"
+#include "./data.cpp"
 
 struct FileNode {
   std::string file_name;
-  FileType type;
+  file_type type;
 
-  bool operator==(const FileNode& rhs) const {
+  bool operator==(const FileNode &rhs) const {
     return rhs.file_name == file_name && rhs.type == type;
   }
 };
 
 typedef std::vector<FileNode> FileNodes;
 
-void testFileVisitorCallback(const std::string path, const enum FileType type,
-                             void* context) {
-  FileNodes* visited_files = static_cast<FileNodes*>(context);
+void testFileVisitorCallback(const std::string path, const enum file_type type,
+                             void *context) {
+  FileNodes *visited_files = static_cast<FileNodes *>(context);
 
   visited_files->push_back({.file_name = path, .type = type});
 }
@@ -114,7 +114,7 @@ void testHashingAFileThatDoesntExist() {
 
     // Assert
     assert(false);
-  } catch (FileOpenError& e) {
+  } catch (file_open_error &e) {
     assert(true);
   }
 }

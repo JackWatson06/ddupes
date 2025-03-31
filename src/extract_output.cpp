@@ -1,5 +1,5 @@
 #include "extract_output.h"
 
-bool FileHashRows::operator==(const FileHashRows& rhs) const {
+bool file_hash_rows::operator==(file_hash_rows const &rhs) const {
   return rhs.directory_rows == directory_rows && rhs.hash_rows == hash_rows;
 }

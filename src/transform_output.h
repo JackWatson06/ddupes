@@ -1,7 +1,6 @@
 #pragma once
-#include <string>
 #include <vector>
 
-typedef std::vector<std::string> SVector;
-typedef std::vector<SVector> Paths;
-typedef std::vector<Paths> DuplicateINodesSet;
+typedef std::vector<char const *> path_segments;
+typedef std::vector<path_segments> duplicate_path_segments;
+typedef std::vector<duplicate_path_segments> duplicate_path_seg_set;

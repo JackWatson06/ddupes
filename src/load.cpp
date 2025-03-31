@@ -2,7 +2,29 @@
 
 #include <algorithm>
 
-std::string joinVectorString(const SVector &vector_string, char delimiter) {
+str_duplicate_path_seg_set convertToStrings(duplicate_path_seg_set const &set) {
+  str_duplicate_path_seg_set set_of_duplicate_path_seg_strings{set.size()};
+
+  for (int i = 0; i < set.size(); ++i) {
+    str_duplicate_path_segments set_of_duplicate_path_strings{set[i].size()};
+
+    for (int j = 0; j < set[i].size(); ++j) {
+      str_path_segments path_segments_string{set[i][j].size()};
+
+      for (int x = 0; x < set[i][j].size(); ++x) {
+        path_segments_string[x] = set[i][j][x];
+      }
+      set_of_duplicate_path_strings[j] = path_segments_string;
+    }
+
+    set_of_duplicate_path_seg_strings[i] = set_of_duplicate_path_strings;
+  }
+
+  return set_of_duplicate_path_seg_strings;
+}
+
+std::string joinVectorString(str_path_segments const &vector_string,
+                             char delimiter) {
   std::string combined_string{""};
 
   auto one_before_end{--vector_string.cend()};
@@ -17,14 +39,15 @@ std::string joinVectorString(const SVector &vector_string, char delimiter) {
   return combined_string;
 }
 
-DuplicateINodeOutput joinDuplicateINodePaths(
-    const DuplicateINodesSet &duplicate_i_nodes_set, char delimiter) {
-  DuplicateINodeOutput duplicate_output;
+duplicate_inode_output
+joinDuplicateINodePaths(str_duplicate_path_seg_set const &duplicate_i_nodes_set,
+                        char delimiter) {
+  duplicate_inode_output duplicate_output;
 
-  for (const Paths &paths : duplicate_i_nodes_set) {
-    SVector joined_paths;
+  for (auto &paths : duplicate_i_nodes_set) {
+    std::vector<std::string> joined_paths;
 
-    for (const SVector &path : paths) {
+    for (auto &path : paths) {
       joined_paths.push_back(joinVectorString(path, delimiter));
     }
 
@@ -36,7 +59,7 @@ DuplicateINodeOutput joinDuplicateINodePaths(
 
 void printDuplicateINodeSet(
     std::ostream &console,
-    const DuplicateINodeOutput &duplicate_i_nodes_output) {
+    duplicate_inode_output const &duplicate_i_nodes_output) {
   console << duplicate_i_nodes_output.size()
           << " Sets of Duplicates Found:\n\n";
 
@@ -53,8 +76,23 @@ void printDuplicateINodeSet(
     }
   }
 }
+int countShortestPath(str_duplicate_path_segments const &paths) {
+  if (paths.size() == 0) {
+    return 0;
+  }
 
-bool comparePath(const SVector &path_one, const SVector &path_two) {
+  int shortest_vector = paths[0].size();
+  for (auto &vector : paths) {
+    if (vector.size() < shortest_vector) {
+      shortest_vector = vector.size();
+    }
+  }
+
+  return shortest_vector;
+}
+
+bool comparePath(str_path_segments const &path_one,
+                 str_path_segments const &path_two) {
   for (int i = 0; i < path_one.size() - 1 && i < path_two.size() - 1; i++) {
     if (path_one[i] == path_two[i]) {
       continue;
@@ -71,22 +109,8 @@ bool comparePath(const SVector &path_one, const SVector &path_two) {
   return path_one.size() < path_two.size();
 }
 
-int countShortestPath(const Paths &paths) {
-  if (paths.size() == 0) {
-    return 0;
-  }
-
-  int shortest_vector = paths[0].size();
-  for (const SVector &vector : paths) {
-    if (vector.size() < shortest_vector) {
-      shortest_vector = vector.size();
-    }
-  }
-
-  return shortest_vector;
-}
-
-bool shortestPathAndLeastCount(const Paths &paths_one, const Paths &paths_two) {
+bool shortestPathAndLeastCount(str_duplicate_path_segments const &paths_one,
+                               str_duplicate_path_segments const &paths_two) {
   int path_one_shortest_count = countShortestPath(paths_one);
   int path_two_shortest_count = countShortestPath(paths_two);
 
@@ -97,22 +121,25 @@ bool shortestPathAndLeastCount(const Paths &paths_one, const Paths &paths_two) {
   return path_one_shortest_count < path_two_shortest_count;
 }
 
-void sortPaths(Paths &paths) {
+void sortPaths(str_duplicate_path_segments &paths) {
   std::sort(paths.begin(), paths.end(), comparePath);
 }
 
-void sortDuplicateINodesSet(DuplicateINodesSet &duplicate_i_nodes_set) {
+void sortDuplicateINodesSet(str_duplicate_path_seg_set &duplicate_i_nodes_set) {
   sort(duplicate_i_nodes_set.begin(), duplicate_i_nodes_set.end(),
        shortestPathAndLeastCount);
 
-  for (Paths &paths : duplicate_i_nodes_set) {
+  for (auto &paths : duplicate_i_nodes_set) {
     sortPaths(paths);
   }
 }
 
-void load(std::ostream &console, DuplicateINodesSet &duplicate_i_nodes_set) {
-  sortDuplicateINodesSet(duplicate_i_nodes_set);
-  const DuplicateINodeOutput duplicate_i_nodes_output =
-      joinDuplicateINodePaths(duplicate_i_nodes_set, '/');
+void load(std::ostream &console,
+          duplicate_path_seg_set &duplicate_i_nodes_set) {
+  str_duplicate_path_seg_set duplicate_path_seg_set_str =
+      convertToStrings(duplicate_i_nodes_set);
+  sortDuplicateINodesSet(duplicate_path_seg_set_str);
+  duplicate_inode_output duplicate_i_nodes_output =
+      joinDuplicateINodePaths(duplicate_path_seg_set_str, '/');
   printDuplicateINodeSet(console, duplicate_i_nodes_output);
 }

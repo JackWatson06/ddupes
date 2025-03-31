@@ -1,870 +1,887 @@
 #include <cassert>
 #include <cstdint>
 
-#include "../src/constants.h"
 #include "../src/transform.h"
+#include "./data.cpp"
 
 /* -------------------------------------------------------------------------- */
 /*                                    Mocks                                   */
 /* -------------------------------------------------------------------------- */
+void assertDuplicatePathSegments(duplicate_path_segments &segment_one,
+                                 duplicate_path_segments &segment_two) {
+  for (int i = 0; i < segment_one.size(); ++i) {
+    for (int j = 0; j < segment_one[i].size(); ++j) {
+      assert(compareStrings(segment_one[i][j], segment_two[i][j]));
+    }
+  }
+}
 
-bool compareHashToDuplicateNotes(DuplicatePathsMap& one,
-                                 DuplicatePathsMap& two) {
-  for (auto iter = one.begin(); iter != one.end(); ++iter) {
-    if (one[iter->first] != two[iter->first]) {
+void assertDuplicatePathSegmentsSet(duplicate_path_seg_set &segment_set_one,
+                                    duplicate_path_seg_set &segment_set_two) {
+  for (int i = 0; i < segment_set_one.size(); ++i) {
+    assertDuplicatePathSegments(segment_set_one[i], segment_set_two[i]);
+  }
+}
+
+bool compareHashToInodes(hash_inode_map *one, hash_inode_map *two) {
+  hash_inode_map &one_reference = *one;
+  hash_inode_map &two_reference = *one;
+
+  for (auto iter = one_reference.begin(); iter != one_reference.end(); ++iter) {
+    if (one_reference[iter->first] != two_reference[iter->first]) {
       return false;
     }
   }
 
-  for (auto iter = two.begin(); iter != two.end(); ++iter) {
-    if (two[iter->first] != one[iter->first]) {
+  for (auto iter = two_reference.begin(); iter != two_reference.end(); ++iter) {
+    if (two_reference[iter->first] != one_reference[iter->first]) {
       return false;
     }
   }
   return true;
 }
 
-Hash uniqueTestHash(uint8_t first_byte = 255) {
-  Hash full_hash = {first_byte, 255, 255, 255, 255, 255, 255, 255,
-                    255,        255, 255, 255, 255, 255, 255, 255};
-  return full_hash;
+bool compareParentDirectoryMap(parent_directory_map_const map_one,
+                               parent_directory_map_const map_two,
+                               int map_one_size, int map_two_size) {
+  if (map_one_size != map_two_size) {
+    return false;
+  }
+
+  for (int i = 0; i < map_one_size; ++i) {
+    std::vector<directory_table_row const *> const directory_one_nodes =
+        map_one[i];
+    std::vector<directory_table_row const *> const directory_two_nodes =
+        map_two[i];
+
+    if (directory_one_nodes != directory_two_nodes) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
-uint8_t* uniqueTestBlob(uint8_t first_byte = 255) {
-  return new uint8_t[MD5_DIGEST_LENGTH]{first_byte, 255, 255, 255, 255, 255,
-                                        255,        255, 255, 255, 255, 255,
-                                        255,        255, 255, 255};
+bool compareParentHashMap(parent_hash_map_const map_one,
+                          parent_hash_map_const map_two, int map_one_size,
+                          int map_two_size) {
+  if (map_one_size != map_two_size) {
+    return false;
+  }
+
+  for (int i = 0; i < map_one_size; ++i) {
+    std::vector<hash_table_row const *> const hash_one_nodes = map_one[i];
+    std::vector<hash_table_row const *> const hash_two_nodes = map_two[i];
+
+    if (hash_one_nodes != hash_two_nodes) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+inode *createTestBranch(std::vector<char const *> path) {
+  // Create the branch.
+  inode cur_node = {static_cast<int>(path.size()),
+                    path[path.size() - 1],
+                    uniqueTestHash(),
+                    {}};
+  path.pop_back();
+
+  while (path.size() != 0) {
+    inode next_node = {static_cast<int>(path.size()),
+                       path[path.size() - 1],
+                       uniqueTestHash(),
+                       {cur_node}};
+    path.pop_back();
+    cur_node = next_node;
+  }
+
+  // Link the parent pointer.
+  inode *node_to_return = new inode{cur_node};
+  while (node_to_return->inodes.size() != 0) {
+    inode const *parent_pointer = node_to_return;
+
+    node_to_return = &node_to_return->inodes[0];
+    node_to_return->parent_node = parent_pointer;
+  }
+
+  return node_to_return;
 }
 
 /* -------------------------------------------------------------------------- */
 /*                                    Tests                                   */
 /* -------------------------------------------------------------------------- */
 
-/* ------------------------------- computeHash ------------------------------ */
-void testHashingAListOfHashes() {
+/* ------------------------- buildParentDirectoryMap ------------------------ */
+void testBuildingParentDirectoryMap() {
   // Arrange
-  Hashes test_hashes{uniqueTestHash(), uniqueTestHash(), uniqueTestHash()};
+  directory_table_row::rows test_directory_rows{{1, "/", -1},
+                                                {2, "home", 1},
+                                                {3, "dir1", 2},
+                                                {4, "dir2", 2},
+                                                {5, "sub_dir", 4}};
 
   // Act
-  Hash actual_hash = computeHash(test_hashes);
+  parent_directory_map actual_directory_map_results =
+      buildParentDirectoryMap(test_directory_rows);
 
-  // Assert
-  Hash expected_hash{91, 83,  0,   15, 77, 131, 26, 67,
-                     48, 112, 248, 0,  4,  38,  41, 16};
-  assert(actual_hash == expected_hash);
-}
-
-void testTwoHashesAreDifferent() {
-  // Arrange
-  Hashes test_one_hashes{uniqueTestHash(), uniqueTestHash(), uniqueTestHash()};
-  Hashes test_two_hashes{uniqueTestHash(), uniqueTestHash()};
-
-  // Act
-  Hash actual_hash_one = computeHash(test_one_hashes);
-  Hash actual_hash_two = computeHash(test_two_hashes);
-
-  // Assert
-  assert(actual_hash_one != actual_hash_two);
-}
-
-/* ------------------------- buildDirectoryRowIdMap ------------------------- */
-void testBuildingDirectoryRowIdMap() {
-  const DirectoryTableRow::Rows test_directory_results = {{1, "/", -1},
-                                                          {2, "home", 1},
-                                                          {3, "dir1", 2},
-                                                          {4, "dir2", 2},
-                                                          {5, "sub_dir", 4}};
-
-  // Act
-  DirectoryRowIdMap actual_directory_result_id_map =
-      buildDirectoryRowIdMap(test_directory_results);
-
-  // Assert
-  const DirectoryRowIdMap expected_directory_result_id_map{
-      {1, &test_directory_results[0]}, {2, &test_directory_results[1]},
-      {3, &test_directory_results[2]}, {4, &test_directory_results[3]},
-      {5, &test_directory_results[4]},
-  };
-  assert(expected_directory_result_id_map == actual_directory_result_id_map);
-}
-
-/* --------------------------- buildDirectoryTree --------------------------- */
-void testDuplicateDirectoryTreeCreation() {
-  // Arrange
-  const DirectoryTableRow::Rows test_directory_results = {{1, "/", -1},
-                                                          {2, "home", 1},
-                                                          {3, "dir1", 2},
-                                                          {4, "dir2", 2},
-                                                          {5, "sub_dir", 4}};
-  const DirectoryRowIdMap test_directory_results_id_map{
-      {1, &test_directory_results[0]}, {2, &test_directory_results[1]},
-      {3, &test_directory_results[2]}, {4, &test_directory_results[3]},
-      {5, &test_directory_results[4]},
-  };
-
-  const HashTableRow::Rows test_hash_results = {
-      {5, "testing1.txt", uniqueTestBlob(128)},
-      {4, "testing2.txt", uniqueTestBlob(196)},
-      {4, "testing3.txt", uniqueTestBlob(200)},
-      {3, "testing4.txt", uniqueTestBlob(255)}};
-
-  // Act
-  DirectoryNode actual_directory_tree =
-      buildDirectoryTree(test_hash_results, test_directory_results_id_map);
-
-  // Assert
-  DirectoryNode expected_directory_tree{
-      "/",
-      {},
-      {DirectoryNode{
-          "home",
+  parent_directory_map expected_directory_map_results =
+      new std::vector<directory_table_row const *>[6]{
           {},
+          {&test_directory_rows[1]},
+          {&test_directory_rows[2], &test_directory_rows[3]},
+          {},
+          {&test_directory_rows[4]},
+          {}};
+  assert(compareParentDirectoryMap(expected_directory_map_results,
+                                   actual_directory_map_results, 6, 6));
+}
+
+void testBuildingParentDirectoryMapWithParentIdOverflow() {
+  // Arrange
+  directory_table_row::rows test_directory_rows{{1, "/", -1},
+                                                {2, "home", 1},
+                                                {3, "dir1", 2},
+                                                {4, "dir2", 2},
+                                                {5, "sub_dir", 10}};
+
+  // Act
+  parent_directory_map actual_directory_map_results =
+      buildParentDirectoryMap(test_directory_rows);
+
+  parent_directory_map expected_directory_map_results =
+      new std::vector<directory_table_row const *>[6]{
+          {},
+          {&test_directory_rows[1]},
+          {&test_directory_rows[2], &test_directory_rows[3]},
+          {},
+          {},
+          {}};
+  assert(compareParentDirectoryMap(expected_directory_map_results,
+                                   actual_directory_map_results, 6, 6));
+}
+
+void testBuildingParentDirectoryMapWithParentIdEqualToSize() {
+  // Arrange
+  directory_table_row::rows test_directory_rows{
+      {1, "/", -1},   {2, "home", 1},    {3, "dir1", 2},
+      {4, "dir2", 2}, {5, "sub_dir", 6}, {6, "sub_dir", 4}};
+
+  // Act
+  parent_directory_map actual_directory_map_results =
+      buildParentDirectoryMap(test_directory_rows);
+
+  parent_directory_map expected_directory_map_results =
+      new std::vector<directory_table_row const *>[7]{
+          {},
+          {&test_directory_rows[1]},
+          {&test_directory_rows[2], &test_directory_rows[3]},
+          {},
+          {&test_directory_rows[5]},
+          {},
+          {&test_directory_rows[4]}};
+  assert(compareParentDirectoryMap(expected_directory_map_results,
+                                   actual_directory_map_results, 6, 6));
+}
+
+/* --------------------------- buildParentHashMap --------------------------- */
+void testBuildingParentHashMap() {
+  // Arrange
+  hash_table_row::rows test_hash_rows{
+      {1, "example.txt", uniqueTestHash()},
+      {1, "example_two.txt", uniqueTestHash()},
+      {2, "example_three.txt", uniqueTestHash()},
+      {3, "example_four.txt", uniqueTestHash()},
+      {4, "example_five.txt", uniqueTestHash()}};
+
+  // Act
+  parent_hash_map actual_hash_map_results =
+      buildParentHashMap(test_hash_rows, 5);
+
+  parent_hash_map expected_hash_map_result =
+      new std::vector<hash_table_row const *>[6]{
+          {},
+          {&test_hash_rows[0], &test_hash_rows[1]},
+          {&test_hash_rows[2]},
+          {&test_hash_rows[3]},
+          {&test_hash_rows[4]},
+          {}};
+  assert(compareParentHashMap(expected_hash_map_result, actual_hash_map_results,
+                              6, 6));
+}
+
+void testBuildingParentHashMapWithDirectoryIdOverflow() {
+  // Arrange
+  hash_table_row::rows test_hash_rows{
+      {1, "example.txt", uniqueTestHash()},
+      {1, "example_two.txt", uniqueTestHash()},
+      {2, "example_three.txt", uniqueTestHash()},
+      {3, "example_four.txt", uniqueTestHash()},
+      {11, "example_five.txt", uniqueTestHash()}};
+
+  // Act
+  parent_hash_map actual_hash_map_results =
+      buildParentHashMap(test_hash_rows, 5);
+
+  parent_hash_map expected_hash_map_result =
+      new std::vector<hash_table_row const *>[6]{
+          {},
+          {&test_hash_rows[0], &test_hash_rows[1]},
+          {&test_hash_rows[2]},
+          {&test_hash_rows[3]},
+          {},
+          {}};
+  assert(compareParentHashMap(expected_hash_map_result, actual_hash_map_results,
+                              6, 6));
+}
+void testBuildingParentHashMapWithDirectoryIdEqualToSize() {
+  // Arrange
+  hash_table_row::rows test_hash_rows{
+      {1, "example.txt", uniqueTestHash()},
+      {1, "example_two.txt", uniqueTestHash()},
+      {2, "example_three.txt", uniqueTestHash()},
+      {3, "example_four.txt", uniqueTestHash()},
+      {5, "example_five.txt", uniqueTestHash()}};
+
+  // Act
+  parent_hash_map actual_hash_map_results =
+      buildParentHashMap(test_hash_rows, 5);
+
+  parent_hash_map expected_hash_map_result =
+      new std::vector<hash_table_row const *>[6]{
+          {},
+          {&test_hash_rows[0], &test_hash_rows[1]},
+          {&test_hash_rows[2]},
+          {&test_hash_rows[3]},
+          {},
+          {&test_hash_rows[4]}};
+  assert(compareParentHashMap(expected_hash_map_result, actual_hash_map_results,
+                              6, 6));
+}
+
+/* ----------------------------- buildINodeTree ----------------------------- */
+
+void testBuildINodeTree() {
+  // Arrange
+  directory_table_row::rows test_directory_rows{{1, "/", -1},
+                                                {2, "home", 1},
+                                                {3, "dir1", 2},
+                                                {4, "dir2", 2},
+                                                {5, "sub_dir", 4}};
+
+  hash_table_row::rows test_hash_rows = {
+      {5, "testing1.txt", uniqueTestHash(128)},
+      {4, "testing2.txt", uniqueTestHash(196)},
+      {4, "testing3.txt", uniqueTestHash(200)},
+      {3, "testing4.txt", uniqueTestHash(255)}};
+
+  parent_directory_map test_directory_maps =
+      new std::vector<directory_table_row const *>[6]{
+          {},
+          {&test_directory_rows[1]},
+          {&test_directory_rows[2], &test_directory_rows[3]},
+          {},
+          {&test_directory_rows[4]},
+          {}};
+
+  parent_hash_map test_hash_maps = new std::vector<hash_table_row const *>[6]{
+      {},
+      {},
+      {},
+      {&test_hash_rows[3]},
+      {&test_hash_rows[1], &test_hash_rows[2]},
+      {&test_hash_rows[0]}};
+
+  // Act
+  inode actual_directory_tree = buildINodeTree(
+      test_directory_maps, test_hash_maps, &test_directory_rows[0]);
+
+  // Assert
+  std::vector<inode> dir2_inode;
+
+  inode expected_directory_tree{
+      1,
+      "/",
+      nullptr,
+      {inode{
+          2,
+          "home",
+          nullptr,
           {
-              DirectoryNode{"dir2",
-                            {
-                                FileNode{"testing3.txt", uniqueTestHash(200)},
-                                FileNode{"testing2.txt", uniqueTestHash(196)},
-                            },
-                            {DirectoryNode{"sub_dir",
-                                           {FileNode{"testing1.txt",
-                                                     uniqueTestHash(128)}}}}},
-              DirectoryNode{
-                  "dir1", {FileNode{"testing4.txt", uniqueTestHash(255)}}, {}},
+              inode{3,
+                    "dir1",
+                    nullptr,
+                    {inode{4, "testing4.txt", uniqueTestHash(255)}}},
+              inode{3,
+                    "dir2",
+                    nullptr,
+                    {
+                        inode{4, "testing2.txt", uniqueTestHash(196)},
+                        inode{4, "testing3.txt", uniqueTestHash(200)},
+                        inode{4,
+                              "sub_dir",
+                              nullptr,
+                              {inode{5, "testing1.txt", uniqueTestHash(128)}}},
+                    }},
           }}}};
 
   assert(actual_directory_tree == expected_directory_tree);
 }
 
-void testWeGetEmptyDirectoryTreeWithEmptyDirectoryRows() {
+/* ----------------------------- calculateHashes ---------------------------- */
+void testCalculateHashes() {
   // Arrange
-  const DirectoryRowIdMap test_directory_results = {};
-  const HashTableRow::Rows test_hash_results = {
-      {5, "testing1.txt", uniqueTestBlob(128)},
-  };
+  hash testing1_hash = uniqueTestHash(128);
+  hash testing2_hash = uniqueTestHash(255);
+  hash testing3_hash = uniqueTestHash(255);
+  hash testing4_hash = uniqueTestHash(255);
 
-  // Act
-  DirectoryNode actual_directory_tree =
-      buildDirectoryTree(test_hash_results, test_directory_results);
-
-  // Assert
-  assert(actual_directory_tree == DirectoryNode());
-}
-
-void testWeGetEmptyDirectoryTreeWithEmptyHashRows() {
-  // Arrange
-  const DirectoryTableRow::Rows test_directory_results = {
-      {2, "home", 1},
-  };
-  const DirectoryRowIdMap test_directory_results_id_map{
-      {1, &test_directory_results[0]},
-  };
-  const HashTableRow::Rows test_hash_results = {};
-
-  // Act
-  DirectoryNode actual_directory_tree =
-      buildDirectoryTree(test_hash_results, test_directory_results_id_map);
-
-  // Assert
-  assert(actual_directory_tree == DirectoryNode());
-}
-
-/* ------------------------------- blobToHash ------------------------------- */
-void testBlobToHash() {
-  // Arrange
-  void* test_blob = uniqueTestBlob();
-
-  // Act
-  Hash actual_hash = blobToHash(test_blob);
-
-  // Assert
-  assert(actual_hash == uniqueTestHash());
-}
-
-/* --------------------------- buildFileNodeBranch -------------------------- */
-void testBuildingSingleFileNodeBranch() {
-  // Arrange
-  const DirectoryTableRow::Rows test_directory_results = {
-      {1, "/", -1}, {2, "home", 1}, {3, "dir1", 2}, {4, "sub_dir", 3}};
-  const DirectoryRowIdMap test_directory_results_id_map{
-      {1, &test_directory_results[0]},
-      {2, &test_directory_results[1]},
-      {3, &test_directory_results[2]},
-      {4, &test_directory_results[3]},
-  };
-  const HashTableRow test_hash_result{4, "testing1.txt", uniqueTestBlob(128)};
-
-  // Act
-  DirectoryNode actual_directory_tree =
-      buildFileNodeBranch(test_hash_result, test_directory_results_id_map);
-
-  // Assert
-  DirectoryNode expected_directory_tree{
+  inode test_inode_tree = {
+      1,
       "/",
-      {},
-      {DirectoryNode{
+      nullptr,
+      {inode{2,
+             "home",
+             nullptr,
+             {
+                 inode{3,
+                       "dir1",
+                       nullptr,
+                       {inode{4, "testing4.txt", testing4_hash}}},
+                 inode{3,
+                       "dir2",
+                       nullptr,
+                       {
+                           inode{4, "testing2.txt", testing2_hash},
+                           inode{4, "testing3.txt", testing3_hash},
+                           inode{4,
+                                 "sub_dir",
+                                 nullptr,
+                                 {inode{5, "testing1.txt", testing1_hash}}},
+                       }},
+             }}}};
+
+  // Act
+  hash_inode_map *actual_hash_inode_map = calculateHashes(test_inode_tree);
+
+  // Assert
+  inode *root = &test_inode_tree;
+  inode *home = &root->inodes[0];
+  inode *dir1 = &home->inodes[0];
+  inode *dir2 = &home->inodes[1];
+  inode *sub_dir = &dir2->inodes[2];
+  inode *testing1 = &sub_dir->inodes[0];
+  inode *testing2 = &dir2->inodes[0];
+  inode *testing3 = &dir2->inodes[1];
+  inode *testing4 = &dir1->inodes[0];
+
+  hash root_hash = new uint8_t[MD5_DIGEST_LENGTH]{
+      139, 187, 250, 74, 123, 89, 161, 14, 121, 7, 151, 95, 141, 249, 141, 0};
+  hash home_hash = new uint8_t[MD5_DIGEST_LENGTH]{
+      82, 85, 237, 207, 252, 9, 108, 132, 58, 114, 118, 2, 226, 6, 116, 158};
+  hash dir1_hash =
+      new uint8_t[MD5_DIGEST_LENGTH]{141, 121, 203, 201, 164, 236, 221, 225,
+                                     18,  252, 145, 186, 98,  91,  19,  194};
+  hash dir2_hash =
+      new uint8_t[MD5_DIGEST_LENGTH]{101, 127, 58, 62,  169, 162, 34, 100,
+                                     174, 254, 42, 142, 217, 195, 33, 252};
+  hash sub_dir_hash = new uint8_t[MD5_DIGEST_LENGTH]{
+      87, 173, 90, 229, 249, 51, 197, 41, 238, 239, 72, 163, 217, 145, 137, 37};
+
+  inode expected_transformed_inode_tree = {
+      1,
+      "/",
+      root_hash,
+      {inode{
+          2,
           "home",
-          {},
+          home_hash,
           {
-              DirectoryNode{"dir1",
-                            {},
-                            {DirectoryNode{"sub_dir",
-                                           {FileNode{"testing1.txt",
-                                                     uniqueTestHash(128)}}}}},
-          }}}};
+              inode{3,
+                    "dir1",
+                    dir1_hash,
+                    {inode{4, "testing4.txt", testing4_hash, {}, dir1}},
+                    home},
+              inode{
+                  3,
+                  "dir2",
+                  dir2_hash,
+                  {
+                      inode{4, "testing2.txt", testing2_hash, {}, dir2},
+                      inode{4, "testing3.txt", testing3_hash, {}, dir2},
+                      inode{4,
+                            "sub_dir",
+                            sub_dir_hash,
+                            {inode{
+                                5, "testing1.txt", testing1_hash, {}, sub_dir}},
+                            dir2},
+                  },
+                  home},
+          },
+          root}},
+      nullptr};
 
-  assert(expected_directory_tree == actual_directory_tree);
+  hash_inode_map *expected_hash_inode_map =
+      new hash_inode_map{{dir1_hash, {dir1}},
+                         {testing2_hash, {testing2, testing3, testing4}},
+                         {sub_dir_hash, {sub_dir}},
+                         {testing1_hash, {testing1}},
+                         {dir2_hash, {dir2}},
+                         {home_hash, {home}},
+                         {root_hash, {root}}};
+
+  assert(expected_transformed_inode_tree == test_inode_tree);
+  assert(compareHashToInodes(expected_hash_inode_map, actual_hash_inode_map));
 }
 
-/* ------------------------- mergeTwoDirectoryNodes ------------------------- */
-void testMergingTwoBranches() {
+void testCalculateHashesErrorWhenLeafNodeDoesNotHaveHash() {
   // Arrange
-  DirectoryNode testing_directory_tree_one{
-      "/",
-      {},
-      {DirectoryNode{
-          "home",
-          {FileNode{"testing1.txt", uniqueTestHash(128)}},
-          {
-              DirectoryNode{"dir1",
-                            {},
-                            {DirectoryNode{"sub_dir",
-                                           {FileNode{"testing1.txt",
-                                                     uniqueTestHash(128)}}}}},
-          }}}};
-
-  DirectoryNode testing_directory_tree_two{
-      "/",
-      {},
-      {DirectoryNode{
-          "home",
-          {},
-          {
-              DirectoryNode{"dir1",
-                            {{FileNode{"testing1.txt", uniqueTestHash(128)}}},
-                            {}},
-              DirectoryNode{"dir2",
-                            {},
-                            {DirectoryNode{"sub_dir",
-                                           {FileNode{"testing1.txt",
-                                                     uniqueTestHash(128)}}}}},
-          }}}};
+  inode test_inode_tree = {1, "/", nullptr, {}};
 
   // Act
-  DirectoryNode actual_directory_tree = mergeTwoDirectoryNodes(
-      testing_directory_tree_one, testing_directory_tree_two);
+  hash_inode_map *actual_hash_inode_map = calculateHashes(test_inode_tree);
 
   // Assert
-  DirectoryNode expected_directory_tree{
-      "/",
-      {},
-      {DirectoryNode{
-          "home",
-          {FileNode{"testing1.txt", uniqueTestHash(128)}},
-          {DirectoryNode{"dir1",
-                         {FileNode{"testing1.txt", uniqueTestHash(128)}},
-                         {DirectoryNode{
-                             "sub_dir",
-                             {FileNode{"testing1.txt", uniqueTestHash(128)}}}}},
-           {
-               DirectoryNode{"dir2",
-                             {},
-                             {DirectoryNode{"sub_dir",
-                                            {FileNode{"testing1.txt",
-                                                      uniqueTestHash(128)}}}}},
-           }}}}};
+  hash empty_hash = new uint8_t[MD5_DIGEST_LENGTH]{};
+  inode expected_transformed_inode_tree = {1, "/", empty_hash, {}, nullptr};
+  hash_inode_map *expected_hash_inode_map =
+      new hash_inode_map{{empty_hash, {&test_inode_tree}}};
 
-  assert(expected_directory_tree == actual_directory_tree);
+  assert(expected_transformed_inode_tree == test_inode_tree);
+  assert(compareHashToInodes(expected_hash_inode_map, actual_hash_inode_map));
 }
 
-void testWeGetEmptyDirectoryTreeWhenMergingTreesWithoutSameRoot() {
+/* --------------------------- countShortestDepth --------------------------- */
+void testCountShortestDepth() {
   // Arrange
-  DirectoryNode testing_directory_tree_one{"testing", {}, {}};
-
-  DirectoryNode testing_directory_tree_two{"/", {}, {}};
+  inode *test_path_one =
+      createTestBranch({"apple", "orange", "pineapple"}); // Returns tail.
+  inode *test_path_two =
+      createTestBranch({"apple", "cherry", "cocounut", "testing"});
 
   // Act
-  DirectoryNode actual_directory_tree = mergeTwoDirectoryNodes(
-      testing_directory_tree_one, testing_directory_tree_two);
-
-  // Assert
-  DirectoryNode expected_directory_tree{"", {}, {}};
-
-  assert(expected_directory_tree == actual_directory_tree);
-}
-
-/* ---------------------------- mergeTwoFileLists --------------------------- */
-void testMergingFileLists() {
-  // Arrange
-  FileNode::Files test_files_one = {
-      FileNode{"testing1.txt", uniqueTestHash(128)},
-      FileNode{"testing2.txt", uniqueTestHash(128)},
-  };
-
-  FileNode::Files test_files_two = {
-      FileNode{"testing1.txt", uniqueTestHash(128)},
-      FileNode{"testing3.txt", uniqueTestHash(128)},
-  };
-
-  // Act
-  FileNode::Files actual_files =
-      mergeTwoFileLists(test_files_one, test_files_two);
-
-  // Assert
-  FileNode::Files expected_files{
-      FileNode{"testing1.txt", uniqueTestHash(128)},
-      FileNode{"testing2.txt", uniqueTestHash(128)},
-      FileNode{"testing3.txt", uniqueTestHash(128)},
-  };
-
-  assert(actual_files == expected_files);
-}
-
-/* ------------------------- mergeTwoDirectoryLists ------------------------- */
-void testMergingDirectories() {
-  // Arrange
-  DirectoryNode::Directories test_directories_one = {
-      DirectoryNode{
-          "dir1", {FileNode{"testing1.txt", uniqueTestHash(128)}}, {}},
-      DirectoryNode{
-          "dir2",
-          {},
-          {DirectoryNode{"sub_dir",
-                         {FileNode{"testing1.txt", uniqueTestHash(128)}}}}},
-  };
-
-  DirectoryNode::Directories test_directories_two = {
-      DirectoryNode{
-          "dir2",
-          {FileNode{"testing1.txt", uniqueTestHash(128)}},
-          {DirectoryNode{"sub_dir",
-                         {FileNode{"testing2.txt", uniqueTestHash(128)}}}}},
-      DirectoryNode{
-          "dir3",
-          {},
-          {DirectoryNode{"sub_dir",
-                         {FileNode{"testing1.txt", uniqueTestHash(128)}}}}},
-  };
-
-  // Act
-  DirectoryNode::Directories actual_directories =
-      mergeTwoDirectoryLists(test_directories_one, test_directories_two);
-
-  // Assert
-  DirectoryNode::Directories expected_directories = {
-      DirectoryNode{
-          "dir1", {FileNode{"testing1.txt", uniqueTestHash(128)}}, {}},
-      DirectoryNode{
-          "dir2",
-          {FileNode{"testing1.txt", uniqueTestHash(128)}},
-          {DirectoryNode{"sub_dir",
-                         {FileNode{"testing1.txt", uniqueTestHash(128)},
-                          FileNode{"testing2.txt", uniqueTestHash(128)}}}}},
-      DirectoryNode{
-          "dir3",
-          {},
-          {DirectoryNode{"sub_dir",
-                         {FileNode{"testing1.txt", uniqueTestHash(128)}}}}},
-  };
-
-  assert(actual_directories == expected_directories);
-}
-
-/* -------------------------------- HashNode -------------------------------- */
-void testHashNodeEqualOperator() {
-  // Arrange
-  const HashNode test_hash_node_one = {
-      "src",
-      uniqueTestHash(255),
-      {HashNode{"testing1.txt", uniqueTestHash(255)},
-       HashNode{
-           "app",
-           uniqueTestHash(255),
-           {HashNode{"testing1.txt", uniqueTestHash(255)}},
-       }}};
-
-  const HashNode test_hash_node_two = {
-      "src",
-      uniqueTestHash(255),
-      {HashNode{"testing1.txt", uniqueTestHash(255)},
-       HashNode{
-           "app",
-           uniqueTestHash(255),
-           {HashNode{"testing1.txt", uniqueTestHash(255)}},
-       }}};
-
-  // Act
-  bool equality_test = test_hash_node_one == test_hash_node_two;
-
-  // Assert
-  assert(equality_test);
-}
-
-/* -------------------------------- FileNode -------------------------------- */
-void testFileNodeEqualOperator() {
-  // Arrange
-  const FileNode test_file_node_one{"testing1.txt", uniqueTestHash(255)};
-
-  const FileNode test_file_node_two{"testing1.txt", uniqueTestHash(255)};
-
-  // Act
-  bool equality_test = test_file_node_one == test_file_node_two;
-
-  // Assert
-  assert(equality_test);
-}
-
-/* ------------------------------ DirectoryNode ----------------------------- */
-void testDirectoryNodeEqualOperator() {
-  // Arrange
-  const DirectoryNode test_directory_node_one{
-      "dir2",
-      {FileNode{"testing1.txt", uniqueTestHash(255)}},
-      {DirectoryNode{"sub_dir",
-                     {FileNode{"testing2.txt", uniqueTestHash(255)}}}}};
-
-  const DirectoryNode test_directory_node_two{
-      "dir2",
-      {FileNode{"testing1.txt", uniqueTestHash(255)}},
-      {DirectoryNode{"sub_dir",
-                     {FileNode{"testing2.txt", uniqueTestHash(255)}}}}};
-
-  // Act
-  bool equality_result = test_directory_node_one == test_directory_node_two;
-
-  // Assert
-  assert(equality_result);
-}
-
-/* ---------------------------- computeHashNode ---------------------------- */
-void testCalculatingHashFromHashNodes() {
-  // Arrange
-  HashNode::HashedNodes test_hash_nodes = {
-      HashNode{"sub-dir", uniqueTestHash()}, HashNode{"src", uniqueTestHash()},
-      FileNode{"testing1.txt", uniqueTestHash()},
-      FileNode{"testing2.txt", uniqueTestHash()},
-      FileNode{"testing3.txt", uniqueTestHash()}};
-
-  // Act
-  Hash actual_hash = computeHashNodesHash(test_hash_nodes);
-
-  // Assert
-  Hash expected_hash = Hash{50, 156, 223, 92, 68,  8,  141, 47,
-                            29, 100, 118, 98, 196, 85, 15,  151};
-  assert(expected_hash == actual_hash);
-}
-
-/* ----------------------------- buildHashNodes ----------------------------- */
-void testConvertingFileNodesToHashNodes() {
-  // Arrange
-  FileNode::Files test_files = {FileNode{"testing1.txt", uniqueTestHash()},
-                                FileNode{"testing2.txt", uniqueTestHash()},
-                                FileNode{"testing3.txt", uniqueTestHash()}};
-
-  // Act
-  HashNode::HashedNodes actual_hash_nodes = buildHashNodes(test_files);
-
-  // Assert
-  HashNode::HashedNodes expected_hash_nodes = {
-      HashNode{"testing1.txt", uniqueTestHash()},
-      HashNode{"testing2.txt", uniqueTestHash()},
-      HashNode{"testing3.txt", uniqueTestHash()}};
-  assert(expected_hash_nodes == actual_hash_nodes);
-}
-
-/* ------------------------------ buildHashNode ----------------------------- */
-void testConvertingLeafDirectoryNodeToHashNode() {
-  // Arrange
-  DirectoryNode test_directory_node = {
-      "src",
-      {FileNode{"testing1.txt", uniqueTestHash()},
-       FileNode{"testing2.txt", uniqueTestHash()},
-       FileNode{"testing3.txt", uniqueTestHash()}}};
-
-  // Act
-  HashNode actual_directory_hash_node = buildHashNode(test_directory_node);
-
-  // Assert
-  HashNode expected_directory_hash_node = HashNode{
-      "src",
-      Hash{91, 83, 0, 15, 77, 131, 26, 67, 48, 112, 248, 0, 4, 38, 41, 16},
-      {HashNode{"testing1.txt", uniqueTestHash()},
-       HashNode{"testing2.txt", uniqueTestHash()},
-       HashNode{"testing3.txt", uniqueTestHash()}}};
-  assert(actual_directory_hash_node == expected_directory_hash_node);
-}
-
-void testConvertingNestedDirectoryNodeToHashNode() {
-  // Arrange
-  DirectoryNode test_directory_node = {
-      "src",
-      {FileNode{"testing1.txt", uniqueTestHash()},
-       FileNode{"testing2.txt", uniqueTestHash()},
-       FileNode{"testing3.txt", uniqueTestHash()}},
-      {DirectoryNode{"app", {FileNode{"testing1.txt", uniqueTestHash()}}},
-       DirectoryNode{"test", {FileNode{"testing1.txt", uniqueTestHash()}}}}};
-
-  // Act
-  HashNode actual_directory_hash_node = buildHashNode(test_directory_node);
-
-  // Assert
-  HashNode expected_directory_hash_node = HashNode{
-      "src",
-      Hash{123, 92, 18, 77, 21, 122, 197, 183, 213, 222, 95, 218, 111, 255, 61,
-           33},
-      {HashNode{"testing1.txt", uniqueTestHash()},
-       HashNode{"testing2.txt", uniqueTestHash()},
-       HashNode{"testing3.txt", uniqueTestHash()},
-       HashNode{"app",
-                Hash{141, 121, 203, 201, 164, 236, 221, 225, 18, 252, 145, 186,
-                     98, 91, 19, 194},
-                {HashNode{"testing1.txt", uniqueTestHash()}}},
-       HashNode{"test",
-                Hash{141, 121, 203, 201, 164, 236, 221, 225, 18, 252, 145, 186,
-                     98, 91, 19, 194},
-                {HashNode{"testing1.txt", uniqueTestHash()}}}},
-  };
-  assert(actual_directory_hash_node == expected_directory_hash_node);
-}
-
-/* ----------------------------- HashPathSegment ---------------------------- */
-void testHashPathSegmentEqualOperator() {
-  // Arrange
-  HashPathSegment test_one{"testing", "test"};
-  HashPathSegment test_two{"testing", "test"};
-
-  // Act
-  bool equality_test = test_one == test_two;
-
-  // Assert
-  assert(equality_test == true);
-}
-
-/* ---------------------- buildHashToDuplicateNodesMap ---------------------- */
-void testSearchingTreeForDuplicateNodes() {
-  // Arrange
-  HashNode test_directory_node = {
-      "apple",
-      Hash{1},
-      {HashNode{
-           "orange",
-           Hash{2},
-           {HashNode{"pineapple", Hash{3}, {HashNode{"one.txt", Hash{4}}}},
-            HashNode{"two.txt", Hash{5}}},
-       },
-       HashNode{"cherry",
-                Hash{2},
-                {HashNode{"coconut", Hash{3}, {HashNode{"three.txt", Hash{4}}}},
-                 HashNode{"four.txt", Hash{5}}}},
-       HashNode{
-           "banana",
-           Hash{6},
-           {HashNode{"five.txt", Hash{4}}, HashNode{"six.txt", Hash{5}}}}}};
-
-  // Act
-  HashToDuplicateNodes actual_duplicate_nodes =
-      buildHashToDuplicateNodesMap(test_directory_node);
-
-  // Assert
-  HashToDuplicateNodes expected_duplicate_nodes{
-      {{"\x01", {{{"apple", "\x01"}}}},
-
-       {"\x02",
-        {{{"apple", "\x01"}, {"orange", "\x02"}},
-         {{"apple", "\x01"}, {"cherry", "\x02"}}}},
-
-       {"\x03",
-        {{{"apple", "\x01"}, {"orange", "\x02"}, {"pineapple", "\x03"}},
-         {{"apple", "\x01"}, {"cherry", "\x02"}, {"coconut", "\x03"}}}},
-
-       {"\x05",
-        {{{"apple", "\x01"}, {"orange", "\x02"}, {"two.txt", "\x05"}},
-         {{"apple", "\x01"}, {"cherry", "\x02"}, {"four.txt", "\x05"}},
-         {{"apple", "\x01"}, {"banana", "\x06"}, {"six.txt", "\x05"}}}},
-
-       {"\x06", {{{"apple", "\x01"}, {"banana", "\x06"}}}},
-       {"\x04",
-        {{{"apple", "\x01"}, {"banana", "\x06"}, {"five.txt", "\x04"}},
-         {{"apple", "\x01"},
-          {"orange", "\x02"},
-          {"pineapple", "\x03"},
-          {"one.txt", "\x04"}},
-         {{"apple", "\x01"},
-          {"cherry", "\x02"},
-          {"coconut", "\x03"},
-          {"three.txt", "\x04"}}}}},
-      {"\x01", "\x02", "\x06", "\x03", "\x05", "\x04"}};
-
-  assert(expected_duplicate_nodes.order == actual_duplicate_nodes.order);
-  compareHashToDuplicateNotes(expected_duplicate_nodes.map,
-                              actual_duplicate_nodes.map);
-}
-
-/* --------------------------- buildStringFromHash -------------------------- */
-void testConvertingHashToString() {
-  // Arrange
-  Hash hash{200, 255, 255};
-
-  // Act
-  std::string actual_string = buildStringFromHash(hash);
-
-  // Assert
-  uint8_t testing[3]{200, 255, 255};
-  std::string expected_string = std::string((char*)testing);
-  assert(actual_string == expected_string);
-}
-
-/* ------------------- filterNonDuplicatesFromDupNodesMap ------------------- */
-void testFilteringMapReturnsDuplicates() {
-  // Arrange
-  HashToDuplicateNodes test_duplicate_nodes{
-      {{"\x01", {{{"apple", "\x01"}}}},
-
-       {"\x02",
-        {{{"apple", "\x01"}, {"orange", "\x02"}},
-         {{"apple", "\x01"}, {"cherry", "\x02"}}}},
-
-       {"\x03",
-        {{{"apple", "\x01"}, {"orange", "\x02"}, {"pineapple", "\x03"}},
-         {{"apple", "\x01"}, {"cherry", "\x02"}, {"coconut", "\x03"}}}},
-
-       {"\x05",
-        {{{"apple", "\x01"}, {"orange", "\x02"}, {"two.txt", "\x05"}},
-         {{"apple", "\x01"}, {"cherry", "\x02"}, {"four.txt", "\x05"}},
-         {{"apple", "\x01"}, {"banana", "\x06"}, {"six.txt", "\x05"}}}},
-
-       {"\x06", {{{"apple", "\x01"}, {"banana", "\x06"}}}},
-       {"\x04",
-        {{{"apple", "\x01"}, {"banana", "\x06"}, {"five.txt", "\x04"}},
-         {{"apple", "\x01"},
-          {"orange", "\x02"},
-          {"pineapple", "\x03"},
-          {"one.txt", "\x04"}},
-         {{"apple", "\x01"},
-          {"cherry", "\x02"},
-          {"coconut", "\x03"},
-          {"three.txt", "\x04"}}}}},
-      {"\x01", "\x02", "\x06", "\x03", "\x05", "\x04"}};
-
-  // Act
-  filterNonDuplicatesFromDupNodesMap(test_duplicate_nodes);
-
-  // Assert
-  HashToDuplicateNodes expected_duplicate_nodes{
-      {{"\x02",
-        {{{"apple", "\x01"}, {"orange", "\x02"}},
-         {{"apple", "\x01"}, {"cherry", "\x02"}}}},
-
-       {"\x03",
-        {{{"apple", "\x01"}, {"orange", "\x02"}, {"pineapple", "\x03"}},
-         {{"apple", "\x01"}, {"cherry", "\x02"}, {"coconut", "\x03"}}}},
-
-       {"\x05",
-        {{{"apple", "\x01"}, {"orange", "\x02"}, {"two.txt", "\x05"}},
-         {{"apple", "\x01"}, {"cherry", "\x02"}, {"four.txt", "\x05"}},
-         {{"apple", "\x01"}, {"banana", "\x06"}, {"six.txt", "\x05"}}}},
-       {"\x04",
-        {{{"apple", "\x01"}, {"banana", "\x06"}, {"five.txt", "\x04"}},
-         {{"apple", "\x01"},
-          {"orange", "\x02"},
-          {"pineapple", "\x03"},
-          {"one.txt", "\x04"}},
-         {{"apple", "\x01"},
-          {"cherry", "\x02"},
-          {"coconut", "\x03"},
-          {"three.txt", "\x04"}}}}},
-      {"\x02", "\x03", "\x05", "\x04"}};
-
-  assert(test_duplicate_nodes.order == expected_duplicate_nodes.order);
-  compareHashToDuplicateNotes(test_duplicate_nodes.map,
-                              expected_duplicate_nodes.map);
-}
-
-/* --------------------------- countShortestVector -------------------------- */
-void testCountingDuplicatePathsLength() {
-  // Arrange
-  DuplicatePaths test_duplicate_paths{
-      {{"apple", "\x01"}, {"orange", "\x02"}, {"pineapple", "\x03"}},
-      {{"apple", "\x01"},
-       {"cherry", "\x02"},
-       {"coconut", "\x03"},
-       {"testing", "\x03"}}};
-
-  // Act
-  int actual_path_count = countShortestDuplicatePath(test_duplicate_paths);
+  int actual_path_count = countShortestDepth({test_path_one, test_path_two});
 
   // Assert
   assert(actual_path_count == 3);
 }
 
-void testCountingDuplicatePathsWithLengthZeroReturnsZero() {
+void testCountShortestDepthWithLengthZeroReturnsZero() {
   // Arrange
-  DuplicatePaths test_duplicate_paths = {};
+  std::vector<inode const *> test_duplicate_inodes = {};
 
   // Act
-  int actual_path_count = countShortestDuplicatePath(test_duplicate_paths);
+  int actual_path_count = countShortestDepth(test_duplicate_inodes);
 
   // Assert
   assert(actual_path_count == 0);
 }
 
-/* ----------------------------- hasSharedParent ---------------------------- */
-void testHasSharedParent() {
-  // Arrange
-  DuplicatePaths test_duplicate_paths{
-      {{"apple", "\x01"}, {"orange", "\x02"}, {"pineapple", "\x03"}},
-      {{"apple", "\x01"}, {"cherry", "\x02"}, {"coconut", "\x03"}}};
+/* ----------------------- fastForwardINodeReferences ----------------------- */
 
-  DuplicatePathsMap test_duplicate_nodes_map{
-      {"\x02",
-       {{{"apple", "\x01"}, {"orange", "\x02"}},
-        {{"apple", "\x01"}, {"cherry", "\x02"}}}}};
+void testFastForwardingINodeReferencesToShallowestDepth() {
+  // Arrange
+  inode *test_path_one =
+      createTestBranch({"apple", "orange", "pineapple"}); // Returns tail.
+  inode *test_path_two =
+      createTestBranch({"apple", "cherry", "cocounut", "testing"});
+  inode *test_path_three = createTestBranch({"apple", "cherry"});
 
   // Act
-  bool actual_has_shared_parent =
-      hasSharedParent(test_duplicate_paths, test_duplicate_nodes_map);
+  std::vector<inode const *> actual_fast_forwarded_refs =
+      fastForwardINodeReferences(
+          {test_path_one, test_path_two, test_path_three});
 
   // Assert
-  assert(actual_has_shared_parent == true);
+  std::vector<inode const *> expected_fast_forwarded_refs{
+      test_path_one->parent_node->parent_node,
+      test_path_two->parent_node->parent_node->parent_node,
+      test_path_three->parent_node};
+
+  assert(actual_fast_forwarded_refs == expected_fast_forwarded_refs);
 }
 
-void testDoesNotHaveSharedParent() {
+void testFastForwardingINodeReferencesToRoot() {
   // Arrange
-  DuplicatePaths test_duplicate_paths{
-      {{"apple", "\x01"}, {"banana", "\x06"}, {"five.txt", "\x04"}},
-      {{"apple", "\x01"},
-       {"orange", "\x02"},
-       {"pineapple", "\x03"},
-       {"one.txt", "\x04"}},
-      {{"apple", "\x01"},
-       {"cherry", "\x02"},
-       {"coconut", "\x03"},
-       {"three.txt", "\x04"}}};
-
-  DuplicatePathsMap test_duplicate_nodes_map{
-      {"\x02",
-       {{{"apple", "\x01"}, {"orange", "\x02"}},
-        {{"apple", "\x01"}, {"cherry", "\x02"}}}},
-
-      {"\x05",
-       {{{"apple", "\x01"}, {"orange", "\x02"}, {"two.txt", "\x05"}},
-        {{"apple", "\x01"}, {"cherry", "\x02"}, {"four.txt", "\x05"}},
-        {{"apple", "\x01"}, {"banana", "\x06"}, {"six.txt", "\x05"}}}}};
+  inode *test_path_one = createTestBranch({"apple"}); // Returns tail.
+  inode *test_path_two =
+      createTestBranch({"apple", "cherry", "cocounut", "testing"});
+  inode *test_path_three = createTestBranch({"apple", "cherry"});
 
   // Act
-  bool actual_has_shared_parent =
-      hasSharedParent(test_duplicate_paths, test_duplicate_nodes_map);
+  std::vector<inode const *> actual_fast_forwarded_refs =
+      fastForwardINodeReferences(
+          {test_path_one, test_path_two, test_path_three});
 
   // Assert
-  assert(actual_has_shared_parent == false);
+  std::vector<inode const *> expected_fast_forwarded_refs{nullptr, nullptr,
+                                                          nullptr};
+
+  assert(actual_fast_forwarded_refs == expected_fast_forwarded_refs);
 }
 
-void testDoesNotHaveSharedParentWhenEmpty() {
-  // Arrange
-  DuplicatePaths test_duplicate_paths{{}};
-  DuplicatePathsMap test_duplicate_nodes_map{};
-
+void testFastForwardingINodeReferencesWithZeroDepth() {
   // Act
-  bool actual_has_shared_parent =
-      hasSharedParent(test_duplicate_paths, test_duplicate_nodes_map);
+  std::vector<inode const *> actual_fast_forwarded_refs =
+      fastForwardINodeReferences({});
 
   // Assert
-  assert(actual_has_shared_parent == false);
+  std::vector<inode const *> expected_fast_forwarded_refs{};
+  assert(actual_fast_forwarded_refs == expected_fast_forwarded_refs);
 }
 
-/* -------------------------- filterSharedHashNodes ------------------------- */
-void testFilteringSharedHashNodes() {
-  // Arrange
-  HashToDuplicateNodes test_duplicate_nodes{
-      {{"\x02",
-        {{{"apple", "\x01"}, {"orange", "\x02"}},
-         {{"apple", "\x01"}, {"cherry", "\x02"}}}},
+/* ---------------------- filterNonDupsAndNestedHashes ---------------------- */
+void testFilteringNonDuplicatesAndNestedHashes() {
+  /**
+   * apple
+   *  |- one.txt {1}
+   *  |- banana
+   *  |  |- two.txt {1}
+   *  |  |- three.txt {5}
+   *  |  |- four.txt {5}
+   *  |- cherry
+   *  |  |- coconut
+   *  |  |  | - five.txt {2}
+   *  |  |  | - six.txt {3}
+   *  |  |- pear
+   *  |  |  | - seven.txt {4}
+   *  |- orange
+   *  |  |- coconut
+   *  |  |  |- eight.txt {2}
+   *  |  |  |- nine.txt {3}
+   *  |  |- pear
+   *  |  |  |- ten.txt {4}
+   *  |- pineapple
+   *  |  |- dragonfruit
+   *  |  |  |- eleven.txt {4}
+   *  |  |  |- grapefruit
+   *  |  |  |  |- twelve.txt {4}
+   */
 
-       {"\x03",
-        {{{"apple", "\x01"}, {"orange", "\x02"}, {"pineapple", "\x03"}},
-         {{"apple", "\x01"}, {"cherry", "\x02"}, {"coconut", "\x03"}}}},
+  /* *Arrange* */
+  // Create Inode Tree.
+  hash one_hash = uniqueTestHash(1);
+  hash two_hash = uniqueTestHash(1);
+  hash three_hash = uniqueTestHash(5);
+  hash four_hash = uniqueTestHash(5);
+  hash five_hash = uniqueTestHash(2);
+  hash six_hash = uniqueTestHash(3);
+  hash seven_hash = uniqueTestHash(4);
+  hash eight_hash = uniqueTestHash(2);
+  hash nine_hash = uniqueTestHash(3);
+  hash ten_hash = uniqueTestHash(4);
+  hash eleven_hash = uniqueTestHash(4);
+  hash twelve_hash = uniqueTestHash(4);
 
-       {"\x05",
-        {{{"apple", "\x01"}, {"orange", "\x02"}, {"two.txt", "\x05"}},
-         {{"apple", "\x01"}, {"cherry", "\x02"}, {"four.txt", "\x05"}},
-         {{"apple", "\x01"}, {"banana", "\x06"}, {"six.txt", "\x05"}}}},
-       {"\x04",
-        {{{"apple", "\x01"}, {"banana", "\x06"}, {"five.txt", "\x04"}},
-         {{"apple", "\x01"},
-          {"orange", "\x02"},
-          {"pineapple", "\x03"},
-          {"one.txt", "\x04"}},
-         {{"apple", "\x01"},
-          {"cherry", "\x02"},
-          {"coconut", "\x03"},
-          {"three.txt", "\x04"}}}}},
-      {"\x02", "\x03", "\x05", "\x04"}};
+  hash apple_hash = new uint8_t[MD5_DIGEST_LENGTH]{
+      10, 112, 89, 243, 242, 28, 192, 154, 125, 20, 255, 3, 116, 155, 29, 63};
+  hash banana_hash = new uint8_t[MD5_DIGEST_LENGTH]{
+      21, 103, 17, 55, 215, 245, 250, 8, 180, 101, 65, 34, 0, 74, 83, 207};
+  hash cherry_hash = new uint8_t[MD5_DIGEST_LENGTH]{
+      213, 94, 197, 224, 217, 186, 123, 63, 63, 225, 242, 197, 2, 203, 182, 31};
+  hash c_cocounut_hash =
+      new uint8_t[MD5_DIGEST_LENGTH]{211, 102, 18,  105, 210, 207, 45,  254,
+                                     155, 243, 217, 116, 128, 9,   213, 160};
+  hash c_pear_hash =
+      new uint8_t[MD5_DIGEST_LENGTH]{20,  75, 166, 96,  112, 230, 220, 200,
+                                     172, 35, 249, 245, 255, 131, 78,  138};
+  hash orange_hash = new uint8_t[MD5_DIGEST_LENGTH]{
+      213, 94, 197, 224, 217, 186, 123, 63, 63, 225, 242, 197, 2, 203, 182, 31};
+  hash o_cocounut_hash =
+      new uint8_t[MD5_DIGEST_LENGTH]{211, 102, 18,  105, 210, 207, 45,  254,
+                                     155, 243, 217, 116, 128, 9,   213, 160};
+  hash o_pear_hash =
+      new uint8_t[MD5_DIGEST_LENGTH]{20,  75, 166, 96,  112, 230, 220, 200,
+                                     172, 35, 249, 245, 255, 131, 78,  138};
+  hash pineapple_hash = new uint8_t[MD5_DIGEST_LENGTH]{
+      184, 59, 189, 15, 41, 100, 155, 8, 143, 48, 98, 241, 166, 52, 125, 220};
+  hash dragonfruit_hash = new uint8_t[MD5_DIGEST_LENGTH]{
+      128, 198, 29, 30, 68, 74, 125, 69, 86, 148, 229, 167, 3, 33, 59, 170};
+  hash grapefruit_hash =
+      new uint8_t[MD5_DIGEST_LENGTH]{20,  75, 166, 96,  112, 230, 220, 200,
+                                     172, 35, 249, 245, 255, 131, 78,  138};
 
-  // Act
-  filterSharedHashNodes(test_duplicate_nodes);
+  inode one{2, "one.txt", one_hash, {}};
+  inode two{3, "two.txt", two_hash, {}};
+  inode three{3, "three.txt", three_hash, {}};
+  inode four{3, "four.txt", four_hash, {}};
+  inode five{4, "five.txt", five_hash, {}};
+  inode six{4, "six.txt", six_hash, {}};
+  inode seven{4, "seven.txt", seven_hash, {}};
+  inode eight{4, "eight.txt", eight_hash, {}};
+  inode nine{4, "nine.txt", nine_hash, {}};
+  inode ten{4, "ten.txt", ten_hash, {}};
+  inode eleven{4, "eleven.txt", eleven_hash, {}};
+  inode twelve{5, "twelve.txt", twelve_hash, {}};
 
-  // Assert
-  HashToDuplicateNodes expected_duplicate_nodes{
-      {{"\x02",
-        {{{"apple", "\x01"}, {"orange", "\x02"}},
-         {{"apple", "\x01"}, {"cherry", "\x02"}}}},
-       {"\x05",
-        {{{"apple", "\x01"}, {"orange", "\x02"}, {"two.txt", "\x05"}},
-         {{"apple", "\x01"}, {"cherry", "\x02"}, {"four.txt", "\x05"}},
-         {{"apple", "\x01"}, {"banana", "\x06"}, {"six.txt", "\x05"}}}},
-       {"\x04",
-        {{{"apple", "\x01"}, {"banana", "\x06"}, {"five.txt", "\x04"}},
-         {{"apple", "\x01"},
-          {"orange", "\x02"},
-          {"pineapple", "\x03"},
-          {"one.txt", "\x04"}},
-         {{"apple", "\x01"},
-          {"cherry", "\x02"},
-          {"coconut", "\x03"},
-          {"three.txt", "\x04"}}}}},
-      {"\x02", "\x05", "\x04"}};
+  inode banana{2, "banana", banana_hash, {two, three, four}};
+  inode cocounut{3, "coconut", c_cocounut_hash, {five, six}};
+  inode pear{3, "pear", c_pear_hash, {seven}};
+  inode cherry{2, "cherry", cherry_hash, {cocounut, pear}};
+  cocounut = {3, "cocounut", o_cocounut_hash, {eight, nine}};
+  pear = {3, "pear", o_pear_hash, {ten}};
+  inode orange{2, "orange", orange_hash, {cocounut, pear}};
+  inode grapefruit{4, "grapefruit", grapefruit_hash, {twelve}};
+  inode dragonfruit{3, "dragonfruit", dragonfruit_hash, {eleven, grapefruit}};
+  inode pineapple{2, "pineapple", pineapple_hash, {dragonfruit}};
+  inode apple{1, "apple", apple_hash, {one, banana, cherry, orange, pineapple}};
 
-  assert(test_duplicate_nodes.order == expected_duplicate_nodes.order);
-  compareHashToDuplicateNotes(test_duplicate_nodes.map,
-                              expected_duplicate_nodes.map);
-}
+  // Assign Parent Pointer.
+  inode *apple_r = &apple;
+  inode *one_r = &apple_r->inodes[0];
+  inode *banana_r = &apple.inodes[1];
+  inode *two_r = &banana_r->inodes[0];
+  inode *three_r = &banana_r->inodes[1];
+  inode *four_r = &banana_r->inodes[2];
+  inode *cherry_r = &apple.inodes[2];
+  inode *c_cocounut_r = &cherry_r->inodes[0];
+  inode *five_r = &c_cocounut_r->inodes[0];
+  inode *six_r = &c_cocounut_r->inodes[1];
+  inode *c_pear_r = &cherry_r->inodes[1];
+  inode *seven_r = &c_pear_r->inodes[0];
+  inode *orange_r = &apple.inodes[3];
+  inode *o_cocounut_r = &orange_r->inodes[0];
+  inode *eight_r = &o_cocounut_r->inodes[0];
+  inode *nine_r = &o_cocounut_r->inodes[1];
+  inode *o_pear_r = &orange_r->inodes[1];
+  inode *ten_r = &o_pear_r->inodes[0];
+  inode *pineapple_r = &apple.inodes[4];
+  inode *dragonfruit_r = &pineapple_r->inodes[0];
+  inode *eleven_r = &dragonfruit_r->inodes[0];
+  inode *grapefruit_r = &dragonfruit_r->inodes[1];
+  inode *twelve_r = &grapefruit_r->inodes[0];
 
-/* ------------------------- buildPathsFromHashPath ------------------------- */
-void testBuildingSVectorFromPathSegment() {
-  // Arrange
-  HashPath test_path_segment = {{"apple", "\x01"}, {"orange", "\x02"}};
+  one_r->parent_node = apple_r;
+  banana_r->parent_node = apple_r;
+  two_r->parent_node = banana_r;
+  three_r->parent_node = banana_r;
+  four_r->parent_node = banana_r;
+  cherry_r->parent_node = apple_r;
+  c_cocounut_r->parent_node = cherry_r;
+  five_r->parent_node = c_cocounut_r;
+  six_r->parent_node = c_cocounut_r;
+  c_pear_r->parent_node = cherry_r;
+  seven_r->parent_node = c_pear_r;
+  orange_r->parent_node = apple_r;
+  o_cocounut_r->parent_node = orange_r;
+  eight_r->parent_node = o_cocounut_r;
+  nine_r->parent_node = o_cocounut_r;
+  o_pear_r->parent_node = orange_r;
+  ten_r->parent_node = o_pear_r;
+  pineapple_r->parent_node = apple_r;
+  dragonfruit_r->parent_node = pineapple_r;
+  eleven_r->parent_node = dragonfruit_r;
+  grapefruit_r->parent_node = dragonfruit_r;
+  twelve_r->parent_node = grapefruit_r;
 
-  // Act
-  SVector actual_paths = buildPathsFromHashPath(test_path_segment);
-
-  // Assert
-  SVector expected_paths = {"apple", "orange"};
-  assert(actual_paths == expected_paths);
-}
-
-/* ------------------------- buildDuplicateINodeSet ------------------------- */
-void testBuildingDuplicateINotesSet() {
-  // Arrange
-  DuplicatePathsMap test_duplicate_nodes{
-      {"\x02",
-       {{{"apple", "\x01"}, {"orange", "\x02"}},
-        {{"apple", "\x01"}, {"cherry", "\x02"}}}},
-      {"\x05",
-       {{{"apple", "\x01"}, {"orange", "\x02"}, {"two.txt", "\x05"}},
-        {{"apple", "\x01"}, {"cherry", "\x02"}, {"four.txt", "\x05"}},
-        {{"apple", "\x01"}, {"banana", "\x06"}, {"six.txt", "\x05"}}}}};
-
-  // Act
-  DuplicateINodesSet actual_duplicate_i_nodes_set =
-      buildDuplicateINodeSet(test_duplicate_nodes);
-
-  // Assert
-  DuplicateINodesSet expected_duplicate_i_node_set = {
-      {{"apple", "orange", "two.txt"},
-       {"apple", "cherry", "four.txt"},
-       {"apple", "banana", "six.txt"}},
-      {{"apple", "orange"}, {"apple", "cherry"}},
+  // Setup the Hash Map.
+  hash_inode_map *test_hash_inode_map = new hash_inode_map{
+      {one_hash, {one_r, two_r}},
+      {three_hash, {three_r, four_r}},
+      {five_hash, {five_r, eight_r}},
+      {six_hash, {six_r, nine_r}},
+      {seven_hash, {seven_r, ten_r, eleven_r, twelve_r}},
+      {banana_hash, {banana_r}},
+      {c_cocounut_hash, {c_cocounut_r, o_cocounut_r}},
+      {c_pear_hash, {c_pear_r, o_pear_r, grapefruit_r}},
+      {cherry_hash, {cherry_r, orange_r}},
+      {pineapple_hash, {pineapple_r}},
+      {dragonfruit_hash, {dragonfruit_r}},
+      {dragonfruit_hash, {apple_r}},
   };
-  assert(actual_duplicate_i_nodes_set == expected_duplicate_i_node_set);
+
+  /* *Act* */
+  duplicate_path_seg_set actual_duplicate_inodes =
+      filterNonDupsAndNestedHashes(apple, test_hash_inode_map);
+
+  /* *Assert* */
+  duplicate_path_seg_set expected_duplicate_inodes = {
+      {{"apple", "one.txt"}, {"apple", "banana", "two.txt"}},
+      {{"apple", "banana", "three.txt"}, {"apple", "banana", "four.txt"}},
+      {{"apple", "cherry", "pear", "seven.txt"},
+       {"apple", "orange", "pear", "ten.txt"},
+       {"apple", "pineapple", "dragonfruit", "eleven.txt"},
+       {"apple", "pineapple", "dragonfruit", "grapefruit", "twelve.txt"}},
+      {{"apple", "cherry", "pear"},
+       {"apple", "orange", "pear"},
+       {"apple", "pineapple", "dragonfruit", "grapefruit"}},
+      {{"apple", "cherry"}, {"apple", "orange"}},
+  };
+
+  assertDuplicatePathSegmentsSet(actual_duplicate_inodes,
+                                 expected_duplicate_inodes);
+}
+
+/* ----------------------- buildDuplicatePathSegments ----------------------- */
+void testBuildDuplicatePathSegments() {
+  // Arrange
+  inode *test_path_one =
+      createTestBranch({"apple", "cherry", "cocounut", "testing"});
+  inode *test_path_two = createTestBranch({"apple"});
+  inode *test_path_three = createTestBranch({"apple", "cherry", "cocounut"});
+
+  // Act
+  duplicate_path_segments actual_path_segments = buildDuplicatePathSegments(
+      {test_path_one, test_path_two, test_path_three});
+
+  // Assert
+  duplicate_path_segments expected_path_segments{
+      {"apple", "cherry", "cocounut", "testing"},
+      {"apple"},
+      {"apple", "cherry", "cocounut"}};
+  assertDuplicatePathSegments(actual_path_segments, expected_path_segments);
+}
+
+/* -------------------------------- inode_== -------------------------------- */
+void testINodeEquality() {
+  // Arrange
+  inode test_inode_one{
+      1,
+      "/",
+      nullptr,
+      {inode{2,
+             "home",
+             nullptr,
+             {inode{3,
+                    "dir2",
+                    nullptr,
+                    {
+                        inode{4, "testing3.txt", uniqueTestHash(200)},
+                        inode{4, "testing2.txt", uniqueTestHash(196)},
+                        inode{4,
+                              "sub_dir",
+                              nullptr,
+                              {inode{5, "testing1.txt", uniqueTestHash(128)}}},
+                    }},
+              inode{3,
+                    "dir1",
+                    nullptr,
+                    {inode{4, "testing4.txt", uniqueTestHash(255)}}}}}}};
+
+  inode test_inode_two{
+      1,
+      "/",
+      nullptr,
+      {inode{2,
+             "home",
+             nullptr,
+             {inode{3,
+                    "dir2",
+                    nullptr,
+                    {
+                        inode{4, "testing3.txt", uniqueTestHash(200)},
+                        inode{4, "testing2.txt", uniqueTestHash(196)},
+                        inode{4,
+                              "sub_dir",
+                              nullptr,
+                              {inode{5, "testing1.txt", uniqueTestHash(128)}}},
+                    }},
+              inode{3,
+                    "dir1",
+                    nullptr,
+                    {inode{4, "testing4.txt", uniqueTestHash(255)}}}}}}};
+
+  // Act
+  bool equality_check = test_inode_one == test_inode_two;
+
+  // Assert
+  assert(equality_check);
+}
+
+void testINodeEqualityNotEqual() {
+  // Arrange
+  inode test_inode_one{
+      1,
+      "/",
+      nullptr,
+      {inode{2,
+             "home",
+             nullptr,
+             {inode{3,
+                    "dir2",
+                    nullptr,
+                    {
+                        inode{4, "testing3.txt", uniqueTestHash(200)},
+                        inode{4, "testing2.txt", uniqueTestHash(196)},
+                        inode{4,
+                              "sub_dir",
+                              nullptr,
+                              {inode{5, "testing1.txt", uniqueTestHash(128)}}},
+                    }},
+              inode{3,
+                    "dir1",
+                    nullptr,
+                    {inode{4, "testing4.txt", uniqueTestHash(255)}}}}}}};
+
+  inode test_inode_two{
+      1,
+      "/",
+      nullptr,
+      {inode{2,
+             "home",
+             nullptr,
+             {inode{3,
+                    "dir2",
+                    nullptr,
+                    {
+                        inode{4, "testing3.txt", uniqueTestHash(200)},
+                        inode{4, "testing2.txt", uniqueTestHash(196)},
+                        inode{4,
+                              "sub_dir",
+                              nullptr,
+                              {inode{5, "testing1.txt", uniqueTestHash(128)}}},
+                    }},
+              inode{3,
+                    "dir1",
+                    nullptr,
+                    {inode{4, "testing4.txt", uniqueTestHash(254)}}}}}}};
+
+  // Act
+  bool equality_check = test_inode_one == test_inode_two;
+
+  // Assert
+  assert(equality_check == false);
+}
+
+/* ----------------------------- inode_hasher_() ---------------------------- */
+void testINodeHashes() {
+  // Arrange
+  inode_hasher inode_hashing_function{};
+
+  // Act
+  std::size_t actual_hash = inode_hashing_function(uniqueTestHash(200));
+
+  // Assert
+  std::size_t expected_hash = 0xC8FFFFFFFFFFFFFF;
+  assert(actual_hash == expected_hash);
+}
+
+/* ----------------------------- inode_key_equal_() ----------------------------
+ */
+void testINodeHashesEqual() {
+  // Arrange
+  inode_key_equal inode_key_equal_function{};
+
+  // Act
+  bool equality_check =
+      inode_key_equal_function(uniqueTestHash(200), uniqueTestHash(200));
+
+  // Assert
+  assert(equality_check == true);
+}
+
+void testINodeHashesNotEqual() {
+  // Arrange
+  inode_key_equal inode_key_equal_function{};
+
+  // Act
+  bool equality_check =
+      inode_key_equal_function(uniqueTestHash(200), uniqueTestHash(212));
+
+  // Assert
+  assert(equality_check == false);
 }
 
 /* -------------------------------- transform ------------------------------- */
@@ -895,83 +912,75 @@ void testBuildingDuplicateINotesSet() {
  */
 void testTransforming() {
   // Arrange
-  const DirectoryTableRow::Rows test_directory_results = {
+  directory_table_row::rows const test_directory_results = {
       {1, "apple", -1},       {2, "banana", 1},      {3, "cherry", 1},
       {4, "orange", 1},       {5, "pineapple", 1},   {6, "coconut", 3},
       {7, "pear", 3},         {8, "coconut", 4},     {9, "pear", 4},
       {10, "dragonfruit", 5}, {11, "grapefruit", 10}};
 
-  const HashTableRow::Rows test_hash_results = {
-      {1, "one.txt", uniqueTestBlob(1)},
-      {2, "two.txt", uniqueTestBlob(1)},
-      {2, "three.txt", uniqueTestBlob(5)},
-      {2, "four.txt", uniqueTestBlob(5)},
-      {6, "five.txt", uniqueTestBlob(2)},
-      {6, "six.txt", uniqueTestBlob(3)},
-      {7, "seven.txt", uniqueTestBlob(4)},
-      {8, "eight.txt", uniqueTestBlob(2)},
-      {8, "nine.txt", uniqueTestBlob(3)},
-      {9, "ten.txt", uniqueTestBlob(4)},
-      {10, "eleven.txt", uniqueTestBlob(4)},
-      {11, "twelve.txt", uniqueTestBlob(4)}};
+  hash_table_row::rows const test_hash_results = {
+      {1, "one.txt", uniqueTestHash(1)},
+      {2, "two.txt", uniqueTestHash(1)},
+      {2, "three.txt", uniqueTestHash(5)},
+      {2, "four.txt", uniqueTestHash(5)},
+      {6, "five.txt", uniqueTestHash(2)},
+      {6, "six.txt", uniqueTestHash(3)},
+      {7, "seven.txt", uniqueTestHash(4)},
+      {8, "eight.txt", uniqueTestHash(2)},
+      {8, "nine.txt", uniqueTestHash(3)},
+      {9, "ten.txt", uniqueTestHash(4)},
+      {10, "eleven.txt", uniqueTestHash(4)},
+      {11, "twelve.txt", uniqueTestHash(4)}};
 
-  const FileHashRows test_file_hash_rows = {
+  const file_hash_rows test_file_hash_rows = {
       .directory_rows = test_directory_results, .hash_rows = test_hash_results};
 
   // Act
-  DuplicateINodesSet actual_duplicate_i_nodes_set =
+  duplicate_path_seg_set actual_duplicate_inodes_set =
       transform(test_file_hash_rows);
 
   // Assert
-  DuplicateINodesSet expected_duplicate_i_nodes_set = {
+  duplicate_path_seg_set expected_duplicate_inodes_set = {
+      {{"apple", "one.txt"}, {"apple", "banana", "two.txt"}},
       {{"apple", "banana", "three.txt"}, {"apple", "banana", "four.txt"}},
-      {{"apple", "orange", "pear"},
-       {"apple", "cherry", "pear"},
-       {"apple", "pineapple", "dragonfruit", "grapefruit"}},
-      {{"apple", "pineapple", "dragonfruit", "eleven.txt"},
+      {{"apple", "cherry", "pear", "seven.txt"},
        {"apple", "orange", "pear", "ten.txt"},
-       {"apple", "cherry", "pear", "seven.txt"},
+       {"apple", "pineapple", "dragonfruit", "eleven.txt"},
        {"apple", "pineapple", "dragonfruit", "grapefruit", "twelve.txt"}},
-      {{"apple", "orange"}, {"apple", "cherry"}},
-      {{"apple", "one.txt"}, {"apple", "banana", "two.txt"}}};
+      {{"apple", "cherry", "pear"},
+       {"apple", "orange", "pear"},
+       {"apple", "pineapple", "dragonfruit", "grapefruit"}},
+      {{"apple", "cherry"}, {"apple", "orange"}},
+  };
 
-  assert(expected_duplicate_i_nodes_set == actual_duplicate_i_nodes_set);
+  assertDuplicatePathSegmentsSet(actual_duplicate_inodes_set,
+                                 expected_duplicate_inodes_set);
 }
 
 /* -------------------------------------------------------------------------- */
 /*                                    Main                                    */
 /* -------------------------------------------------------------------------- */
 int main() {
-  testHashingAListOfHashes();
-  testTwoHashesAreDifferent();
-  testBuildingDirectoryRowIdMap();
-  testDuplicateDirectoryTreeCreation();
-  testWeGetEmptyDirectoryTreeWithEmptyDirectoryRows();
-  testWeGetEmptyDirectoryTreeWithEmptyHashRows();
-  testBlobToHash();
-  testBuildingSingleFileNodeBranch();
-  testMergingTwoBranches();
-  testWeGetEmptyDirectoryTreeWhenMergingTreesWithoutSameRoot();
-  testMergingFileLists();
-  testMergingDirectories();
-  testHashNodeEqualOperator();
-  testFileNodeEqualOperator();
-  testDirectoryNodeEqualOperator();
-  testCalculatingHashFromHashNodes();
-  testConvertingFileNodesToHashNodes();
-  testConvertingLeafDirectoryNodeToHashNode();
-  testConvertingNestedDirectoryNodeToHashNode();
-  testHashPathSegmentEqualOperator();
-  testSearchingTreeForDuplicateNodes();
-  testConvertingHashToString();
-  testFilteringMapReturnsDuplicates();
-  testCountingDuplicatePathsLength();
-  testCountingDuplicatePathsWithLengthZeroReturnsZero();
-  testHasSharedParent();
-  testDoesNotHaveSharedParent();
-  testDoesNotHaveSharedParentWhenEmpty();
-  testFilteringSharedHashNodes();
-  testBuildingSVectorFromPathSegment();
-  testBuildingDuplicateINotesSet();
+  testBuildingParentDirectoryMap();
+  testBuildingParentDirectoryMapWithParentIdOverflow();
+  testBuildingParentDirectoryMapWithParentIdEqualToSize();
+  testBuildingParentHashMap();
+  testBuildingParentHashMapWithDirectoryIdOverflow();
+  testBuildingParentHashMapWithDirectoryIdEqualToSize();
+  testBuildINodeTree();
+  testCalculateHashes();
+  testCalculateHashesErrorWhenLeafNodeDoesNotHaveHash();
+  testCountShortestDepth();
+  testCountShortestDepthWithLengthZeroReturnsZero();
+  testFastForwardingINodeReferencesToShallowestDepth();
+  testFastForwardingINodeReferencesToRoot();
+  testFastForwardingINodeReferencesWithZeroDepth();
+  testFilteringNonDuplicatesAndNestedHashes();
+  testBuildDuplicatePathSegments();
+  testINodeEquality();
+  testINodeEqualityNotEqual();
+  testINodeHashes();
+  testINodeHashesEqual();
+  testINodeHashesNotEqual();
   testTransforming();
 }

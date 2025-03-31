@@ -3,107 +3,96 @@
 #include <sqlite3.h>
 
 #include <stdexcept>
-#include <string>
 #include <vector>
+
+#include "../lib.h"
 
 /* -------------------------------------------------------------------------- */
 /*                                  Database                                  */
 /* -------------------------------------------------------------------------- */
-sqlite3* initDB(std::string file_name);
-void resetDB(sqlite3* db);
-void freeDB(sqlite3* db_handle);
+sqlite3 *initDB(char const *const file_name);
+void resetDB(sqlite3 *db);
+void freeDB(sqlite3 *db_handle);
 
 /* -------------------------------------------------------------------------- */
 /*                               Table Gateways                               */
 /* -------------------------------------------------------------------------- */
-
-struct DirectoryTableRow {
-  typedef std::vector<DirectoryTableRow> Rows;
+struct directory_table_row {
+  typedef std::vector<directory_table_row> rows;
 
   int id;
-  std::string name;
+  str_const name;
   int parent_id;
 
-  bool operator==(const DirectoryTableRow& rhs) const;
+  bool operator==(const directory_table_row &rhs) const;
 };
 
-struct HashTableRow {
-  typedef std::vector<HashTableRow> Rows;
-  int directory_id;
-  std::string name;
-  uint8_t* hash;
+typedef directory_table_row const directory_table_row_const;
 
-  ~HashTableRow() {
-    if (hash != nullptr) {
-      delete[] hash;
-    }
-  }
-  HashTableRow(int directory_id, std::string name, uint8_t* hash)
-      : directory_id(directory_id), name(name), hash(hash) {}
-  HashTableRow() : directory_id(-1), name(""), hash(nullptr) {}
-  HashTableRow(const HashTableRow& other);
-  HashTableRow& operator=(const HashTableRow& other);
+struct hash_table_row {
+  typedef std::vector<hash_table_row> rows;
+  int const directory_id;
+  str_const name;
+  hash_const hash;
 
-  bool operator==(const HashTableRow& rhs) const;
+  bool operator==(hash_table_row const &rhs) const;
 };
 
-struct HashInput {
-  int directory_id;
-  std::string name;
-  uint8_t* hash;
+typedef hash_table_row const hash_table_row_const;
 
-  bool operator==(const HashInput& rhs) const;
+struct hash_input {
+  int const directory_id;
+  str_const name;
+  hash_const hash;
+
+  bool operator==(hash_input const &rhs) const;
 };
 
-struct DirectoryInput {
-  int parent_id;
-  std::string name;
+struct directory_input {
+  int const parent_id;
+  str_const name;
 
-  bool operator==(const DirectoryInput& rhs) const;
+  bool operator==(directory_input const &rhs) const;
 };
 
-bool compareBlobs(const uint8_t* blob_one, const uint8_t* blob_two);
+int fetchLastDirectoryId(sqlite3 *db);
+directory_table_row::rows fetchAllDirectories(sqlite3 *db);
+int createDirectory(sqlite3 *db, directory_input const &directory_table_input);
 
-int fetchLastDirectoryId(sqlite3* db);
-DirectoryTableRow::Rows fetchAllDirectories(sqlite3* db);
-int createDirectory(sqlite3* db, DirectoryInput const& directory_table_input);
-
-HashTableRow::Rows fetchAllHashes(sqlite3* db);
-void createHash(sqlite3* db, HashInput const& hash_table_input);
+hash_table_row::rows fetchAllHashes(sqlite3 *db);
+void createHash(sqlite3 *db, hash_input const &hash_table_input);
 
 /* -------------------------------------------------------------------------- */
 /*                                   Errors                                   */
 /* -------------------------------------------------------------------------- */
-class UnableToConnectError : public std::runtime_error {
- public:
-  UnableToConnectError(const std::string& message)
+class unable_to_connect_error : public std::runtime_error {
+public:
+  unable_to_connect_error(const char *message) : std::runtime_error(message) {}
+};
+
+class unable_to_create_table_error : public std::runtime_error {
+public:
+  unable_to_create_table_error(const char *message)
       : std::runtime_error(message) {}
 };
 
-class UnableToCreateTableError : public std::runtime_error {
- public:
-  UnableToCreateTableError(const std::string& message)
+class unable_to_build_statement_error : public std::runtime_error {
+public:
+  unable_to_build_statement_error(const char *message)
       : std::runtime_error(message) {}
 };
 
-class UnableToBuildStatementError : public std::runtime_error {
- public:
-  UnableToBuildStatementError(const std::string& message)
-      : std::runtime_error(message) {}
+class unable_to_step_error : public std::runtime_error {
+public:
+  unable_to_step_error(const char *message) : std::runtime_error(message) {}
 };
 
-class UnableToStepError : public std::runtime_error {
- public:
-  UnableToStepError(const std::string& message) : std::runtime_error(message) {}
+class unable_to_insert_error : public std::runtime_error {
+public:
+  unable_to_insert_error(const char *message) : std::runtime_error(message) {}
 };
 
-class UnableToInsertError : public std::runtime_error {
- public:
-  UnableToInsertError(const std::string& message)
-      : std::runtime_error(message) {}
-};
-
-class NotFoundError : public std::runtime_error {
- public:
-  NotFoundError(const std::string& message) : std::runtime_error(message) {}
+class not_found_error : public std::runtime_error {
+public:
+  not_found_error(const char *message) : std::runtime_error(message) {}
 };

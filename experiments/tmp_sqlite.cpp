@@ -266,27 +266,27 @@ constexpr uint MD5_DIGEST_LENGTH = 16;
 /*                           Abstracting to Classes                           */
 /* -------------------------------------------------------------------------- */
 
-Hash blobToHash(const void *blob);
+hash_const blobToHash(const void *blob);
 
-class UnableToConnectError : std::runtime_error {
+class unable_to_connect_error : std::runtime_error {
   using std::runtime_error::runtime_error;
 };
 
-class UnableToBuildStatementError : std::runtime_error {
+class unable_to_build_statement_error : std::runtime_error {
   using std::runtime_error::runtime_error;
 };
 
-class UnableToStepError : std::runtime_error {
+class unable_to_step_error : std::runtime_error {
   using std::runtime_error::runtime_error;
 };
 
 class SQLiteDatabase {
- public:
+public:
   SQLiteDatabase(std::string file) {
     int rc = sqlite3_open(file.c_str(), &db);
 
     if (rc != SQLITE_OK) {
-      throw UnableToConnectError("Unable to conenct to the database.");
+      throw unable_to_connect_error("Unable to conenct to the database.");
     }
   };
 
@@ -294,13 +294,12 @@ class SQLiteDatabase {
 
   sqlite3 *getDb() const { return db; }
 
- private:
+private:
   sqlite3 *db;
 };
 
-template <class T>
-class SQLiteTableView : TableView<T> {
- public:
+template <class T> class SQLiteTableView : TableView<T> {
+public:
   SQLiteTableView(const SQLiteDatabase &db) : db(db) {}
   ~SQLiteTableView() { sqlite3_finalize(res); }
 
@@ -310,14 +309,15 @@ class SQLiteTableView : TableView<T> {
     int codde = sqlite3_prepare_v2(db.getDb(), query.c_str(), -1, &res, 0);
 
     if (codde != SQLITE_OK) {
-      throw UnableToBuildStatementError("Error trying to build the statement.");
+      throw unable_to_build_statement_error(
+          "Error trying to build the statement.");
     }
   }
   bool step() {
     int rc = sqlite3_step(res);
 
     if (rc == SQLITE_ERROR || rc == SQLITE_MISUSE) {
-      throw UnableToStepError(
+      throw unable_to_step_error(
           "You may have forgotten to prepare your statement before stepping!");
     }
 
@@ -330,27 +330,27 @@ class SQLiteTableView : TableView<T> {
     return true;
   }
 
- protected:
+protected:
   const SQLiteDatabase db;
   sqlite3_stmt *res;
 };
 
-class DirectoryTableView : public SQLiteTableView<DirectoryTableRow> {
- public:
-  using SQLiteTableView<DirectoryTableRow>::SQLiteTableView;
+class DirectoryTableView : public SQLiteTableView<directory_table_row> {
+public:
+  using SQLiteTableView<directory_table_row>::SQLiteTableView;
 
-  DirectoryTableRow buildTableRow() {
-    return DirectoryTableRow{.id = sqlite3_column_int(res, 0),
-                             .name = sqlite3_column_text(res, 1),
-                             .parent_id = sqlite3_column_int(res, 3)};
+  directory_table_row buildTableRow() {
+    return directory_table_row{.id = sqlite3_column_int(res, 0),
+                               .name = sqlite3_column_text(res, 1),
+                               .parent_id = sqlite3_column_int(res, 3)};
   }
 };
 
-class HashTableView : public SQLiteTableView<HashTableRow> {
- public:
-  using SQLiteTableView<HashTableRow>::SQLiteTableView;
+class HashTableView : public SQLiteTableView<hash_table_row> {
+public:
+  using SQLiteTableView<hash_table_row>::SQLiteTableView;
 
-  HashTableRow buildTableRow() {
+  hash_table_row buildTableRow() {
     return {.directory_id = sqlite3_column_int(res, 0),
             .name = sqlite3_column_text(res, 1),
             .hash = sqlite3_column_blob(res, 10)};
@@ -360,8 +360,8 @@ class HashTableView : public SQLiteTableView<HashTableRow> {
 const std::string CONNECTION_URI = "/home/jack/.cache/fdupes/hash.db";
 
 int main() {
-  DirectoryTableRow::Rows directories{};
-  HashTableRow::Rows hashes{};
+  directory_table_row::rows directories{};
+  hash_table_row::rows hashes{};
 
   SQLiteDatabase sqlite{CONNECTION_URI};
   DirectoryTableView directory_view{sqlite, "SELECT * FROM Directories;"};
@@ -380,9 +380,9 @@ int main() {
   return 0;
 }
 
-Hash blobToHash(const void *blob) {
+hash_const blobToHash(const void *blob) {
   uint8_t *uint_blob = (uint8_t *)blob;
-  Hash hash{};
+  hash_const hash{};
   for (uint8_t *iter = uint_blob; iter != uint_blob + MD5_DIGEST_LENGTH + 1;
        ++iter) {
     hash.push_back(*iter);

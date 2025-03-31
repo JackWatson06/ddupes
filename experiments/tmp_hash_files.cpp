@@ -22,9 +22,9 @@ std::ifstream openFile(std::string filePath) {
   return file;
 }
 
-void computeFileHash(uint8_t* hash_buffer, std::ifstream& file) {
-  EVP_MD_CTX* md_context;
-  unsigned char* md5_digest;
+void computeFileHash(uint8_t *hash_buffer, std::ifstream &file) {
+  EVP_MD_CTX *md_context;
+  unsigned char *md5_digest;
   unsigned int md5_digest_length = MD5_HASH_LENGTH;
   const int BUFFER_SIZE = 4096;
   char buffer[BUFFER_SIZE];
@@ -36,7 +36,7 @@ void computeFileHash(uint8_t* hash_buffer, std::ifstream& file) {
     EVP_DigestUpdate(md_context, buffer, file.gcount());
   }
 
-  md5_digest = (unsigned char*)OPENSSL_malloc(md5_digest_length);
+  md5_digest = (unsigned char *)OPENSSL_malloc(md5_digest_length);
   EVP_DigestFinal_ex(md_context, md5_digest, &md5_digest_length);
   EVP_MD_CTX_free(md_context);
 
@@ -47,8 +47,8 @@ void computeFileHash(uint8_t* hash_buffer, std::ifstream& file) {
   OPENSSL_free(md5_digest);
 }
 
-void hashFilesInDirectory(const std::string& directoryPath) {
-  for (const auto& entry : fs::recursive_directory_iterator(directoryPath)) {
+void hashFilesInDirectory(const std::string &directoryPath) {
+  for (const auto &entry : fs::recursive_directory_iterator(directoryPath)) {
     entry.~directory_entry if (fs::is_regular_file(entry.path())) {
       std::string file_path = entry.path().string();
       std::ifstream file = openFile(file_path);
@@ -89,11 +89,11 @@ void hashFilesInDirectory(const std::string& directoryPath) {
  * stack.
  */
 
-void visitFiles(const std::string& directory_path,
+void visitFiles(const std::string &directory_path,
                 void (*fileNodeCallback)(const std::string, const T),
                 const(*void) services) {
-  for (const auto& entry : fs::recursive_directory_iterator(directory_path)) {
-    FileType file_type =  // IF directory then load directory.
+  for (const auto &entry : fs::recursive_directory_iterator(directory_path)) {
+    file_type file_type = // IF directory then load directory.
         fileNodeCallback(entry.path(), file_type, services)
   }
 }
@@ -101,24 +101,24 @@ void visitFiles(const std::string& directory_path,
 struct CacheServices {
   bool (*fileCheck)(std::string);
   bool (*directoryCheck)(std::string);
-  void (*extractHash)(uint8_t* hash, std::string);
-  DirectoryTableGateway&
-      directory_table_gateway;  // These can be pointers (although it becomes a
+  void (*extractHash)(uint8_t *hash, std::string);
+  DirectoryTableGateway
+      &directory_table_gateway; // These can be pointers (although it becomes a
                                 // pain in the butt to carry around the
                                 // reference to the db if these are just
                                 // callbacks.)
-  FileTableGateway& file_table_gateway;  // These can be pointers.
+  FileTableGateway &file_table_gateway; // These can be pointers.
 }
 
-enum FileType {
+enum file_type {
   DIRECTORY = 1,
   FILE = 2,
 }
 
 // This is my code. It interacts with no services except those passed in.
 void fileNodeCallback(
-    std::string path, FileType file_type, (void*) services) {
-  const CacheServices cache_services = (CacheServices*)services;
+    std::string path, file_type file_type, (void*) services) {
+  const CacheServices cache_services = (CacheServices *)services;
   const unsigned int directory_id =
       services.directory_table_gateway.getByName(path);
   const std::string name = "testing";

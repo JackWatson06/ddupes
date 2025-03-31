@@ -1,327 +1,239 @@
 #include "transform.h"
 
-#include <openssl/evp.h>
-
+#include <iostream>
 #include <queue>
 
-#include "constants.h"
+/**
+ * NOTE: Thoughts and Ideas:
+ * - The hash table will only have to be as large as the amount of files
+ * and directories we have. I think this may be idealistic though since the
+ * hash tables key space is larger than the actual slots.
+ * - I may never have to delete the in memory hash data unless we convert
+ * to a string for the hash map. Only delete then! Even though it would
+ * be best to delete all the hash data in one go. I could get a page
+ * of memory for this.
+ */
 
-/* -------------------------------------------------------------------------- */
-/*                               Data Structures                              */
-/* -------------------------------------------------------------------------- */
-bool DirectoryNode::operator==(const DirectoryNode &rhs) const {
-  return rhs.directories == directories && rhs.files == files &&
-         rhs.name == name;
+bool inode::operator==(inode const &rhs) const {
+  return compareStrings(path_segment, rhs.path_segment) &&
+         compareHashes(node_hash, rhs.node_hash) && inodes == rhs.inodes &&
+         parent_node == rhs.parent_node;
 }
 
-bool HashNode::operator==(const HashNode &rhs) const {
-  return rhs.hashed_nodes == hashed_nodes && rhs.hash == hash &&
-         rhs.name == name;
-}
+std::size_t inode_hasher::operator()(hash_const k) const {
+  std::size_t hash = 0;
 
-bool HashPathSegment::operator==(const HashPathSegment &rhs) const {
-  return rhs.hash_string == hash_string && rhs.path_segment == path_segment;
-}
-
-/* -------------------------------------------------------------------------- */
-/*                           Building Directory Map                           */
-/* -------------------------------------------------------------------------- */
-DirectoryRowIdMap buildDirectoryRowIdMap(
-    const DirectoryTableRow::Rows &directory_table_rows) {
-  DirectoryRowIdMap directory_id_map;
-
-  for (const DirectoryTableRow &row : directory_table_rows) {
-    directory_id_map[row.id] = &row;
+  for (uint i = 0; i < 8; ++i) {
+    hash |= (std::size_t)k[i] << (64 - (8 * (i + 1)));
   }
 
-  return directory_id_map;
-}
-
-Hash blobToHash(const void *blob) {
-  uint8_t *uint_blob = (uint8_t *)blob;
-  Hash hash{};
-  for (uint8_t *iter = uint_blob; iter != uint_blob + MD5_DIGEST_LENGTH;
-       ++iter) {
-    hash.push_back(*iter);
-  }
   return hash;
 }
 
-DirectoryNode buildFileNodeBranch(const HashTableRow &hash_result,
-                                  const DirectoryRowIdMap &directory_id_map) {
-  const DirectoryTableRow *next_directory_pointer =
-      directory_id_map.at(hash_result.directory_id);
-  DirectoryNode root_node{
-      next_directory_pointer->name,
-      {FileNode{hash_result.name, blobToHash(hash_result.hash)}}};
-
-  while (next_directory_pointer->parent_id != -1) {
-    next_directory_pointer =
-        directory_id_map.at(next_directory_pointer->parent_id);
-    root_node = DirectoryNode{next_directory_pointer->name, {}, {root_node}};
-  }
-
-  return root_node;
+bool inode_key_equal::operator()(hash_const lhs, hash_const rhs) const {
+  return compareHashes(lhs, rhs);
 }
 
-FileNode::Files mergeTwoFileLists(const FileNode::Files &files_one,
-                                  const FileNode::Files &files_two) {
-  std::unordered_map<std::string, bool> files_already_merged{};
-  FileNode::Files merged_files = files_one;
+parent_directory_map
+buildParentDirectoryMap(directory_table_row::rows const &directory_table_rows) {
+  parent_directory_map map =
+      new std::vector<directory_table_row_const *>[directory_table_rows.size() +
+                                                   1] {};
 
-  for (const FileNode &file : merged_files) {
-    files_already_merged[file.name] = true;
-  }
-
-  for (const FileNode &file : files_two) {
-    // The file does not exist in the list.
-    if (files_already_merged.find(file.name) == files_already_merged.end()) {
-      merged_files.push_back(file);
-    }
-  }
-
-  return merged_files;
-}
-
-DirectoryNode::Directories mergeTwoDirectoryLists(
-    const DirectoryNode::Directories &directories_one,
-    const DirectoryNode::Directories &directories_two) {
-  std::unordered_map<std::string, unsigned int> merged_directories_index;
-  DirectoryNode::Directories merged_directories = directories_one;
-
-  for (unsigned int i = 0; i < merged_directories.size(); i++) {
-    merged_directories_index[merged_directories[i].name] = i;
-  }
-
-  for (const DirectoryNode &directory_node : directories_two) {
-    // Directory already in the merged_directories.
-    if (merged_directories_index.find(directory_node.name) !=
-        merged_directories_index.end()) {
-      unsigned int merged_index = merged_directories_index[directory_node.name];
-      DirectoryNode &directory_already_merged =
-          merged_directories[merged_index];
-      merged_directories[merged_index] =
-          mergeTwoDirectoryNodes(directory_node, directory_already_merged);
+  for (int i = 0; i < directory_table_rows.size(); ++i) {
+    directory_table_row const &table_row = directory_table_rows[i];
+    if (table_row.parent_id == -1) {
       continue;
     }
 
-    merged_directories.push_back(directory_node);
+    if (table_row.parent_id > directory_table_rows.size()) {
+      return map;
+    }
+
+    map[table_row.parent_id].push_back(&table_row);
   }
 
-  return merged_directories;
+  return map;
 }
 
-DirectoryNode mergeTwoDirectoryNodes(const DirectoryNode &directory_node_one,
-                                     const DirectoryNode &directory_node_two) {
-  if (directory_node_one.name != directory_node_two.name) {
-    return DirectoryNode{""};
+parent_hash_map buildParentHashMap(hash_table_row::rows const &hash_table_rows,
+                                   int num_of_directories) {
+  parent_hash_map map =
+      new std::vector<hash_table_row_const *>[num_of_directories + 1];
+
+  for (int i = 0; i < hash_table_rows.size(); ++i) {
+    hash_table_row const &table_row = hash_table_rows[i];
+
+    if (table_row.directory_id > num_of_directories) {
+      return map;
+    }
+
+    map[table_row.directory_id].push_back(&table_row);
   }
 
-  FileNode::Files node_one_files = directory_node_one.files;
-  DirectoryNode::Directories node_one_directories =
-      directory_node_one.directories;
-  FileNode::Files node_two_files = directory_node_two.files;
-  DirectoryNode::Directories node_two_directories =
-      directory_node_two.directories;
-
-  return DirectoryNode{
-      directory_node_one.name,
-      mergeTwoFileLists(node_one_files, node_two_files),
-      mergeTwoDirectoryLists(node_one_directories, node_two_directories)};
+  return map;
 }
 
-DirectoryNode buildDirectoryTree(
-    const HashTableRow::Rows &hash_table_rows,
-    const DirectoryRowIdMap &directory_table_rows) {
-  if (directory_table_rows.size() == 0 || hash_table_rows.size() == 0) {
-    return DirectoryNode("");
+inode buildINodeTree(parent_directory_map_const directory_map,
+                     parent_hash_map_const hash_map,
+                     directory_table_row_const *const current_directory_row,
+                     int depth) {
+  inode inode_tree{depth, stringDup(current_directory_row->name), nullptr};
+  // Creates a new inode on the stack. Takes the size of the sizeof(char
+  // const*), sizeof(hash), and sizeof(vector).
+
+  ++depth;
+  for (hash_table_row_const *hash_table_row :
+       hash_map[current_directory_row->id]) {
+    inode_tree.inodes.push_back({
+        depth,
+        stringDup(hash_table_row->name),
+        hashDup(hash_table_row->hash),
+    }); // Creates an inode on the heap. It does a malloc in push_back
   }
 
-  DirectoryNode tree =
-      buildFileNodeBranch(hash_table_rows[0], directory_table_rows);
-
-  for (int i = 1; i < hash_table_rows.size(); i++) {
-    DirectoryNode file_node_branch =
-        buildFileNodeBranch(hash_table_rows[i], directory_table_rows);
-    tree = mergeTwoDirectoryNodes(file_node_branch, tree);
+  for (directory_table_row_const *directory_table_row :
+       directory_map[current_directory_row->id]) {
+    inode_tree.inodes.push_back(
+        buildINodeTree(directory_map, hash_map, directory_table_row, depth));
+    // Creates an inode on the heap. It does a malloc in push_back;
   }
 
-  return tree;
+  return inode_tree; // Copy the return value into whatever variable we are
+                     // assinging to from the caller.
 }
 
-/* -------------------------------------------------------------------------- */
-/*                             Computing Hash Tree                            */
-/* -------------------------------------------------------------------------- */
-Hash computeHashNodesHash(const HashNode::HashedNodes nodes) {
-  Hashes hashes = {};
-
-  for (const HashNode &hash_node : nodes) {
-    hashes.push_back(hash_node.hash);
-  }
-
-  return computeHash(hashes);
-}
-
-Hash computeHash(Hashes hashes) {
-  EVP_MD_CTX *md_context;
-  unsigned char *md5_digest;
-  unsigned int md5_digest_len = EVP_MD_size(EVP_md5());
-
-  md_context = EVP_MD_CTX_new();
-  EVP_DigestInit_ex(md_context, EVP_md5(), nullptr);
-
-  for (const Hash file_hash : hashes) {
-    EVP_DigestUpdate(md_context, file_hash.data(), file_hash.size());
-  }
-
-  md5_digest = (unsigned char *)OPENSSL_malloc(md5_digest_len);
-  EVP_DigestFinal_ex(md_context, md5_digest, &md5_digest_len);
-  EVP_MD_CTX_free(md_context);
-
-  std::vector<uint8_t> hash_of_hashes(md5_digest, md5_digest + md5_digest_len);
-
-  OPENSSL_free(md5_digest);
-  return hash_of_hashes;
-}
-
-HashNode::HashedNodes buildHashNodes(const FileNode::Files &file_nodes) {
-  HashNode::HashedNodes hash_nodes(file_nodes.size());
-
-  for (int i = 0; i < hash_nodes.size(); i++) {
-    hash_nodes[i] = file_nodes[i];
-  }
-
-  return hash_nodes;
-}
-
-HashNode buildHashNode(const DirectoryNode &directory_node) {
-  HashNode::HashedNodes hash_nodes = buildHashNodes(directory_node.files);
-
-  if (directory_node.directories.size() == 0) {
-    return HashNode{directory_node.name, computeHashNodesHash(hash_nodes),
-                    hash_nodes};
-  }
-
-  for (const DirectoryNode &directory_node : directory_node.directories) {
-    hash_nodes.push_back(buildHashNode(directory_node));
-  }
-
-  return HashNode{directory_node.name, computeHashNodesHash(hash_nodes),
-                  hash_nodes};
-}
-
-/* -------------------------------------------------------------------------- */
-/*                               Finding Hashes                               */
-/* -------------------------------------------------------------------------- */
-std::string buildStringFromHash(const Hash &hash) {
-  std::string hash_string = "";
-
-  for (const uint8_t byte : hash) {
-    hash_string += (char)byte;
-  }
-
-  return hash_string;
-}
-
-void addHashStringToHashDuplicateNodesMap(
-    const std::string &hash_string, const HashPath &relative_path,
-    HashToDuplicateNodes &hash_to_duplicate_nodes) {
-  if (hash_to_duplicate_nodes.map.find(hash_string) ==
-      hash_to_duplicate_nodes.map.end()) {
-    hash_to_duplicate_nodes.map[hash_string] = {relative_path};
-    hash_to_duplicate_nodes.order.push_back(hash_string);
+void addInodePointerToHashMap(inode &directory_tree,
+                              hash_inode_map &duplicate_inodes_map) {
+  // TODO Does this make a copy of the hash? Should I just put in a poitner to
+  // the hash on the original inode?
+  if (duplicate_inodes_map.count(directory_tree.node_hash) == 0) {
+    duplicate_inodes_map[directory_tree.node_hash] = {&directory_tree};
     return;
   }
 
-  hash_to_duplicate_nodes.map[hash_string].push_back(relative_path);
+  duplicate_inodes_map[directory_tree.node_hash].push_back(&directory_tree);
+  return;
 }
 
-HashPath popOffParentPathQueue(std::queue<HashPath> &parent_path) {
-  if (parent_path.empty()) {
-    return {};
+hash calculateINodeHashesRecursive(inode &directory_tree,
+                                   hash_inode_map &duplicate_inodes_map,
+                                   inode const *parent_pointer = nullptr) {
+  directory_tree.parent_node = parent_pointer;
+
+  if (directory_tree.inodes.size() == 0 &&
+      directory_tree.node_hash == nullptr) {
+    directory_tree.node_hash = new uint8_t[MD5_DIGEST_LENGTH]{};
   }
 
-  HashPath parent_hash_path_segment = parent_path.front();
-  parent_path.pop();
-  return parent_hash_path_segment;
-}
-
-HashToDuplicateNodes buildHashToDuplicateNodesMap(const HashNode &hash_node) {
-  HashToDuplicateNodes hash_to_duplicate_nodes;
-  std::queue<HashNode> hash_queue;
-  std::queue<HashPath> parent_path;
-
-  HashPath root_hash_path{{}};
-  hash_queue.emplace(hash_node);
-
-  while (!hash_queue.empty()) {
-    HashNode next_hash_node = hash_queue.front();
-    hash_queue.pop();
-
-    std::string current_hash_string = buildStringFromHash(next_hash_node.hash);
-    HashPath current_path = popOffParentPathQueue(parent_path);
-    current_path.push_back({next_hash_node.name, current_hash_string});
-
-    addHashStringToHashDuplicateNodesMap(current_hash_string, current_path,
-                                         hash_to_duplicate_nodes);
-
-    for (const HashNode &child_hash_node : next_hash_node.hashed_nodes) {
-      hash_queue.emplace(child_hash_node);
-      parent_path.emplace(current_path);
-    }
+  if (directory_tree.inodes.size() == 0) {
+    addInodePointerToHashMap(directory_tree, duplicate_inodes_map);
+    return directory_tree.node_hash;
   }
 
-  return hash_to_duplicate_nodes;
-}
+  int num_of_hashes = directory_tree.inodes.size();
+  hashes sub_node_hashes = new hash[num_of_hashes];
 
-void filterNonDuplicatesFromDupNodesMap(
-    HashToDuplicateNodes &hash_to_duplicate_nodes) {
-  for (auto iter = hash_to_duplicate_nodes.order.begin();
-       iter != hash_to_duplicate_nodes.order.end();) {
-    if (hash_to_duplicate_nodes.map.at(*iter).size() != 1) {
-      ++iter;
-      continue;
-    }
-    hash_to_duplicate_nodes.map.erase(*iter);
-    iter = hash_to_duplicate_nodes.order.erase(iter);
+  for (int i = 0; i < directory_tree.inodes.size(); ++i) {
+    sub_node_hashes[i] = calculateINodeHashesRecursive(
+        directory_tree.inodes[i], duplicate_inodes_map, &directory_tree);
   }
+
+  directory_tree.node_hash = computeHash(sub_node_hashes, num_of_hashes);
+  addInodePointerToHashMap(directory_tree, duplicate_inodes_map);
+  delete[] sub_node_hashes;
+
+  return directory_tree.node_hash;
 }
 
-int countShortestDuplicatePath(const DuplicatePaths &duplicate_paths) {
-  if (duplicate_paths.size() == 0) {
+hash_inode_map *calculateHashes(inode &directory_tree) {
+  hash_inode_map *duplicate_inodes_map = new hash_inode_map;
+  calculateINodeHashesRecursive(directory_tree, *duplicate_inodes_map);
+  return duplicate_inodes_map;
+}
+
+int countShortestDepth(std::vector<inode const *> const &inode_references) {
+  if (inode_references.size() == 0) {
     return 0;
   }
 
-  int shortest_vector = duplicate_paths[0].size();
-  for (const HashPath &hash_path : duplicate_paths) {
-    if (hash_path.size() < shortest_vector) {
-      shortest_vector = hash_path.size();
+  int min_size = INT32_MAX;
+
+  for (auto inode_reference : inode_references) {
+    if (inode_reference->depth < min_size) {
+      min_size = inode_reference->depth;
     }
   }
 
-  return shortest_vector;
+  return min_size;
 }
 
-bool hasSharedParent(const DuplicatePaths &paths,
-                     const DuplicatePathsMap &hash_to_duplicate_nodes) {
-  int shortest_path = countShortestDuplicatePath(paths);
+/**
+ * In order to determine if any of the inodes have a shared parent they all must
+ * be at the same depth. When checking if inodes have a shared parent you only
+ * have to check the depth of shallowist node.
+ */
+std::vector<inode const *>
+fastForwardINodeReferences(std::vector<inode const *> const inode_references) {
+  int shortest_path = countShortestDepth(inode_references);
 
   if (shortest_path == 0) {
-    return false;
+    return inode_references;
   }
 
   // Skip the last element because this will always be shared across all the
   // duplicate paths.
-  for (unsigned int i = 0; i < shortest_path - 1; i++) {
-    bool all_have_same_hash = true;
-    std::string first_hash_string = paths[0][i].hash_string;
+  std::vector<inode const *> current_inode_references{};
+  for (auto iter = inode_references.cbegin(); iter != inode_references.end();
+       ++iter) {
 
-    for (auto iter = paths.cbegin(); iter != paths.end(); ++iter) {
-      all_have_same_hash = (*iter)[i].hash_string == first_hash_string;
+    inode const *current_inode_reference = (*iter);
+
+    while (current_inode_reference->depth != shortest_path) {
+      current_inode_reference = current_inode_reference->parent_node;
     }
 
-    if (all_have_same_hash && hash_to_duplicate_nodes.find(first_hash_string) !=
-                                  hash_to_duplicate_nodes.end()) {
+    current_inode_references.push_back(current_inode_reference->parent_node);
+  }
+  return current_inode_references;
+}
+
+/**
+ *
+ * This code will essentially take a list of list of node pointers each
+ * representing a group of node pointers with the same hash. If any of the node
+ * pointers share a common ancestor that is also a duplicate (meaning it's in a
+ * duplicate folder) then you remove that from the list. Otherwise, if one
+ * ancestor does not share a ancestor with a duplicate hash then you keep those
+ * in the list because even if other entries are in a duplicate folder the fact
+ * that no ancestors had the same folder hash means that one is outside the
+ * duplicate folder which we want to list.
+ */
+bool hasSharedParent(std::vector<inode const *> const inode_references,
+                     hash_inode_map const *hash_to_duplicate_nodes) {
+  if (inode_references.size() == 0) {
+    return false;
+  }
+
+  std::vector<inode const *> fast_forwarded_references =
+      fastForwardINodeReferences(inode_references);
+
+  // Skip the leaf node of the shortest
+
+  while (fast_forwarded_references[0] != nullptr) {
+    bool all_have_same_hash = true;
+    hash const &first_hash = fast_forwarded_references[0]->node_hash;
+    fast_forwarded_references[0] = fast_forwarded_references[0]->parent_node;
+
+    for (auto iter = fast_forwarded_references.begin() + 1;
+         iter != fast_forwarded_references.end(); ++iter) {
+      all_have_same_hash = compareHashes((*iter)->node_hash, first_hash);
+      (*iter) = (*iter)->parent_node;
+    }
+
+    // Do all the nodes have the same hash and is the node actually duplicated
+    // with another?
+    if (all_have_same_hash && hash_to_duplicate_nodes->count(first_hash) != 0) {
       return true;
     }
   }
@@ -329,71 +241,115 @@ bool hasSharedParent(const DuplicatePaths &paths,
   return false;
 }
 
-void filterSharedHashNodes(HashToDuplicateNodes &hash_to_duplicate_nodes) {
-  DuplicatePathsMap no_shared_hash_nodes{};
-
-  for (auto iter = hash_to_duplicate_nodes.order.begin();
-       iter != hash_to_duplicate_nodes.order.end();) {
-    if (!hasSharedParent(hash_to_duplicate_nodes.map[*iter],
-                         no_shared_hash_nodes)) {
-      no_shared_hash_nodes[*iter] = hash_to_duplicate_nodes.map[*iter];
-      ++iter;
-      continue;
+void filterNonDupesRecursive(inode const &node_to_process,
+                             hash_inode_map *hash_inode_map) {
+  // Post-order DFS.
+  if (node_to_process.inodes.size() > 0) {
+    for (auto node : node_to_process.inodes) {
+      filterNonDupesRecursive(node, hash_inode_map);
     }
-    hash_to_duplicate_nodes.map.erase(*iter);
-    iter = hash_to_duplicate_nodes.order.erase(iter);
-  }
-}
-
-/* -------------------------------------------------------------------------- */
-/*                                   Output                                   */
-/* -------------------------------------------------------------------------- */
-SVector buildPathsFromHashPath(const HashPath &path) {
-  SVector paths = {};
-
-  for (auto iter = path.cbegin(); iter != path.end(); ++iter) {
-    paths.push_back(iter->path_segment);
   }
 
-  return paths;
-}
-DuplicateINodesSet buildDuplicateINodeSet(
-    const DuplicatePathsMap &duplicate_nodes) {
-  DuplicateINodesSet duplicate_i_node_set;
+  // Hash was already removed or Hash has duplicates.
+  if (hash_inode_map->count(node_to_process.node_hash) == 0 ||
+      hash_inode_map->at(node_to_process.node_hash).size() != 1) {
+    return;
+  }
 
-  for (auto iter = duplicate_nodes.begin(); iter != duplicate_nodes.end();
-       ++iter) {
-    Paths paths;
-    for (auto path_iter = iter->second.cbegin();
-         path_iter != iter->second.end(); ++path_iter) {
-      paths.push_back(buildPathsFromHashPath(*path_iter));
+  // Hash does not have duplicates so remove.
+  hash_inode_map->erase(node_to_process.node_hash);
+}
+
+// TODO: Should this be moved to the view? I would argue that we have already
+// found the duplicates once we have a vector of all the duplicated node
+// references.
+duplicate_path_segments buildDuplicatePathSegments(
+    std::vector<inode const *> const &duplicate_inode_references) {
+  duplicate_path_segments
+      duplicate_inodes_result{}; // Create a new vector on stack.
+
+  for (auto inode_reference : duplicate_inode_references) {
+    // TODO: This could just be a staic array with the length (if we calc depth
+    // on calculateHashes)
+    std::vector<const char *>
+        path_segments{}; // Create vector on stack and copy the
+                         // string from the inode tree.
+
+    inode const *current_inode_pointer = inode_reference;
+
+    while (current_inode_pointer != nullptr) {
+      path_segments.insert(
+          path_segments.begin(),
+          stringDup(current_inode_pointer
+                        ->path_segment)); // Create copy of string and push the
+      // pointer to the vector.
+      current_inode_pointer = current_inode_pointer->parent_node;
     }
 
-    duplicate_i_node_set.push_back(paths);
+    duplicate_inodes_result.push_back(
+        path_segments); // Push copy of the path_segments vector.
+    // path_segments vector goes out of scope. Call destructor (does not delete
+    // the string only deletes it's pointer)
   }
 
-  return duplicate_i_node_set;
+  return duplicate_inodes_result;
 }
 
-DuplicateINodesSet transform(const FileHashRows &file_hash_rows) {
-  // Building Directory Map
-  DirectoryRowIdMap directory_row_id_map =
-      buildDirectoryRowIdMap(file_hash_rows.directory_rows);
+void filterNestedHashesRecursive(inode const &node_to_process,
+                                 hash_inode_map *hash_inode_map,
+                                 duplicate_path_seg_set &duplicate_nodes) {
+  // Post-order DFS.
+  if (node_to_process.inodes.size() > 0) {
+    for (auto node : node_to_process.inodes) {
+      filterNestedHashesRecursive(node, hash_inode_map, duplicate_nodes);
+    }
+  }
 
-  DirectoryNode directory_tree =
-      buildDirectoryTree(file_hash_rows.hash_rows, directory_row_id_map);
+  if (hash_inode_map->count(node_to_process.node_hash) == 0) {
+    // Already process the node previously since it was removed from the hash
+    // map.
+    return;
+  }
 
-  // Compute all hashes
-  HashNode directory_hash_tree = buildHashNode(directory_tree);
+  std::vector<inode const *> duplicate_inodes =
+      (*hash_inode_map)[node_to_process.node_hash];
 
-  // Find Hashes
-  HashToDuplicateNodes hash_to_nodes =
-      buildHashToDuplicateNodesMap(directory_hash_tree);
-  filterNonDuplicatesFromDupNodesMap(hash_to_nodes);
-  filterSharedHashNodes(hash_to_nodes);
+  if (duplicate_inodes.size() < 2) {
+    // Nothing to do. The node was not a duplicate or it was just created.
+    return;
+  }
 
-  // Output
-  DuplicateINodesSet duplicate_i_node_set =
-      buildDuplicateINodeSet(hash_to_nodes.map);
-  return duplicate_i_node_set;
+  if (hasSharedParent(duplicate_inodes, hash_inode_map)) {
+    hash_inode_map->erase(node_to_process.node_hash);
+    return;
+  }
+
+  // Add the current duplicate_inodes to duplicate_nodes. These are actual
+  // duplicates.
+  hash_inode_map->erase(node_to_process.node_hash);
+  duplicate_nodes.push_back(buildDuplicatePathSegments(duplicate_inodes));
+}
+
+duplicate_path_seg_set
+filterNonDupsAndNestedHashes(inode const &root_node,
+                             hash_inode_map *hash_inode_map) {
+
+  filterNonDupesRecursive(root_node, hash_inode_map);
+
+  duplicate_path_seg_set duplicate_nodes_set{};
+  filterNestedHashesRecursive(root_node, hash_inode_map, duplicate_nodes_set);
+  return duplicate_nodes_set;
+}
+
+duplicate_path_seg_set transform(file_hash_rows const &file_hashes) {
+  parent_directory_map directory_map =
+      buildParentDirectoryMap(file_hashes.directory_rows);
+  parent_hash_map hash_map = buildParentHashMap(
+      file_hashes.hash_rows, file_hashes.directory_rows.size());
+  inode root_inode =
+      buildINodeTree(directory_map, hash_map, &file_hashes.directory_rows[0]);
+
+  hash_inode_map *hash_to_inode_map = calculateHashes(root_inode);
+
+  return filterNonDupsAndNestedHashes(root_inode, hash_to_inode_map);
 }
