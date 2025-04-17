@@ -10,6 +10,8 @@ typedef hash *hashes; // Array type for a list of hashes.
 typedef hash_const *const hashes_const;
 
 constexpr unsigned short int MD5_DIGEST_LENGTH = 16;
+constexpr uint8_t const EMPTY_HASH[MD5_DIGEST_LENGTH] = {
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 int stringLength(str_const);
 char *stringDup(str_const);

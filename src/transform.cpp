@@ -116,6 +116,29 @@ void addInodePointerToHashMap(inode &directory_tree,
   return;
 }
 
+void removeEmptyINodes(inode &directory_tree) {
+  if (directory_tree.inodes.size() == 0) { // At leaf node.
+    return;
+  }
+
+  for (inode &leaf_node : directory_tree.inodes) {
+    removeEmptyINodes(leaf_node);
+  }
+
+  for (auto iter = directory_tree.inodes.begin();
+       iter != directory_tree.inodes.end();) {
+    bool is_empty_folder =
+        (*iter).node_hash == nullptr && (*iter).inodes.size() == 0;
+    bool is_empty_file = compareHashes((*iter).node_hash, EMPTY_HASH);
+
+    if (is_empty_file || is_empty_folder) {
+      directory_tree.inodes.erase(iter);
+      continue;
+    }
+    ++iter;
+  }
+}
+
 hash calculateINodeHashesRecursive(inode &directory_tree,
                                    hash_inode_map &duplicate_inodes_map,
                                    inode const *parent_pointer = nullptr) {
@@ -349,6 +372,7 @@ duplicate_path_seg_set transform(file_hash_rows const &file_hashes) {
   inode root_inode =
       buildINodeTree(directory_map, hash_map, &file_hashes.directory_rows[0]);
 
+  removeEmptyINodes(root_inode);
   hash_inode_map *hash_to_inode_map = calculateHashes(root_inode);
 
   return filterNonDupsAndNestedHashes(root_inode, hash_to_inode_map);

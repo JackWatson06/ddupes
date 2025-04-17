@@ -46,12 +46,21 @@ void extractHash(hash hash, std::string path) {
   const int BUFFER_SIZE =
       4194304; // This should give us an stack overflow error.
   char buffer[BUFFER_SIZE];
+  int blocks_read = 0;
 
   md_context = EVP_MD_CTX_new();
   EVP_DigestInit_ex(md_context, EVP_md5(), nullptr);
 
   while (file.read(buffer, BUFFER_SIZE) || file.gcount()) {
+    ++blocks_read;
     EVP_DigestUpdate(md_context, buffer, file.gcount());
+  }
+
+  if (!blocks_read) {
+    for (int i = 0; i < md5_digest_length; ++i) {
+      hash[i] = 0;
+    }
+    return;
   }
 
   md5_digest = (unsigned char *)OPENSSL_malloc(md5_digest_length);

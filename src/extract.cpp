@@ -185,8 +185,11 @@ void fileVisitorCallback(const std::string path, const enum file_type type,
   std::string file_node_name = tokenize_path[tokenize_path.size() - 1];
 
   if (file_services->depth != tokenize_path.size() - 1) {
-    --file_services->depth;
-    file_services->directory_stack.pop_back();
+    int ascend_depth = (file_services->depth + 1) - tokenize_path.size();
+    for (int i = 0; i < ascend_depth; ++i) {
+      --file_services->depth;
+      file_services->directory_stack.pop_back();
+    }
   }
 
   if (type == FILE_TYPE_FILE) {
@@ -238,3 +241,22 @@ file_hash_rows extractUsingCache(extract_database_service db_services) {
   return {db_services.fetchAllDirectories(db_services.db),
           db_services.fetchAllHashes(db_services.db)};
 }
+
+/**
+ *
+ * $49 = "/home/jack/Desktop/#inbox/sort_msi_windows_desktop_DDrive/Desktop"
+  (gdb) p ((file_visitor_services *)services)->directory_stack
+  $50 = std::vector of length 3, capacity 4 = {1, 3, 4}
+  (gdb) p ((file_visitor_services *)services)->depth
+  $51 = 1
+
+  $37 = "/home/jack/Desktop/#inbox/sort_msi_windows_desktop_DDrive/UserFaces"
+  (gdb) p ((file_visitor_services *)services)->directory_stack
+  $38 = std::vector of length 2, capacity 2 = {1, 3}
+  (gdb) p ((file_visitor_services *)services)->depth
+
+
+ *
+ *
+ *
+ */

@@ -43,19 +43,23 @@ file.
 
 int main() {
   try {
-    string_vector paths = {"tests/testing_dirs/dir1",
-                           "tests/testing_dirs/dir2"};
-    sqlite3 *db = initDB("testing.hash");
+    string_vector paths = {
+        "/home/jack/Desktop/#inbox/sort_msi_windows_desktop_DDrive/",
+        "/home/jack/Desktop/#inbox/sort_msi_windows_desktop_Desktop/",
+        "/home/jack/Desktop/#inbox/sort_msi_windows_desktop_User/"};
+    sqlite3 *db =
+        initDB("sort_msi_windows_desktop_DDrive_AND_Desktop_AND_User.hash");
 
-    buildCache(paths,
-               create_cache_database_service{.db = db,
-                                             .resetDB = resetDB,
-                                             .createDirectory = createDirectory,
-                                             .createHash = createHash},
-               create_cache_file_system_service{.qualifyRelativePath =
-                                                    qualifyRelativeURL,
-                                                .visitFiles = visitFiles,
-                                                .extractHash = extractHash});
+    // buildCache(paths,
+    //            create_cache_database_service{.db = db,
+    //                                          .resetDB = resetDB,
+    //                                          .createDirectory =
+    //                                          createDirectory, .createHash =
+    //                                          createHash},
+    //            create_cache_file_system_service{.qualifyRelativePath =
+    //                                                 qualifyRelativeURL,
+    //                                             .visitFiles = visitFiles,
+    //                                             .extractHash = extractHash});
 
     file_hash_rows extraction_results = extractUsingCache(
         extract_database_service{.db = db,

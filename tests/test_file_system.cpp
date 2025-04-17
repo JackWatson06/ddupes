@@ -63,6 +63,8 @@ void testVisitingAllFilesAndDirectories() {
 
   // Assert
   FileNodes expected_file_nodes{
+      {"./tests/testing_dirs/../testing_dirs/dir1/testing_two",
+       FILE_TYPE_DIRECTORY},
       {"./tests/testing_dirs/../testing_dirs/dir1/sub_dir_two",
        FILE_TYPE_DIRECTORY},
       {"./tests/testing_dirs/../testing_dirs/dir1/sub_dir_two/example8.txt",
@@ -71,7 +73,19 @@ void testVisitingAllFilesAndDirectories() {
        FILE_TYPE_FILE},
       {"./tests/testing_dirs/../testing_dirs/dir1/example2.txt",
        FILE_TYPE_FILE},
+      {"./tests/testing_dirs/../testing_dirs/dir1/testing_one",
+       FILE_TYPE_DIRECTORY},
+      {"./tests/testing_dirs/../testing_dirs/dir1/testing_one/testing_three",
+       FILE_TYPE_DIRECTORY},
+      {"./tests/testing_dirs/../testing_dirs/dir1/"
+       "testing_one/testing_three/testing_four",
+       FILE_TYPE_DIRECTORY},
+      {"./tests/testing_dirs/../testing_dirs/dir1/testing_one/"
+       "testing_three/testing_four/example1.txt",
+       FILE_TYPE_FILE},
       {"./tests/testing_dirs/../testing_dirs/dir1/example5.txt",
+       FILE_TYPE_FILE},
+      {"./tests/testing_dirs/../testing_dirs/dir1/example6.txt",
        FILE_TYPE_FILE},
       {"./tests/testing_dirs/../testing_dirs/dir1/example3.txt",
        FILE_TYPE_FILE},
@@ -119,10 +133,27 @@ void testHashingAFileThatDoesntExist() {
   }
 }
 
+void testHashingAnEmptyFile() {
+  // Arrange
+  std::string file = "tests/testing_dirs/dir1/example6.txt";
+
+  // Act
+  uint8_t actual_md5_digest[MD5_DIGEST_LENGTH];
+  extractHash(actual_md5_digest, file);
+
+  // Assert
+  uint8_t expected_hash[MD5_DIGEST_LENGTH]{0, 0, 0, 0, 0, 0, 0, 0,
+                                           0, 0, 0, 0, 0, 0, 0, 0};
+  for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
+    assert(expected_hash[i] == actual_md5_digest[i]);
+  }
+}
+
 int main() {
   testVisitingAllFilesAndDirectories();
-  testHashingAFile();
-  testHashingAFileThatDoesntExist();
   testAbsoluteFileResolution();
   testAbsoluteFileResolutionWithDirectoryLinks();
+  testHashingAFile();
+  testHashingAFileThatDoesntExist();
+  testHashingAnEmptyFile();
 }

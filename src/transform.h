@@ -39,6 +39,7 @@ parent_directory_map buildParentDirectoryMap(directory_table_row::rows const &);
 parent_hash_map buildParentHashMap(hash_table_row::rows const &, int);
 inode buildINodeTree(parent_directory_map_const, parent_hash_map_const,
                      directory_table_row_const *const, int = 1);
+void removeEmptyINodes(inode &directory_tree);
 hash_inode_map *calculateHashes(inode &directory_tree);
 int countShortestDepth(std::vector<inode const *> const &);
 std::vector<inode const *>

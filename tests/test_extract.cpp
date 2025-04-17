@@ -49,18 +49,26 @@ std::string mockQualifyRelativePath(std::string &path) {
 void mockVisitFiles(const std::string &directory_path,
                     file_visitor_callback visitor_callback, void *context) {
   if (directory_path == "./dir1/") {
-    unsigned int num_of_files = 7;
-    std::string paths[num_of_files]{"./dir1/testing",
-                                    "./dir1/testing/test",
-                                    "./dir1/testing/test/example_one.txt",
-                                    "./dir1/testing/test/example_two.txt",
-                                    "./dir1/testing/example_three.txt",
-                                    "./dir1/testing/example_four.txt",
-                                    "./dir1/example_five.txt"};
-    enum file_type types[num_of_files]{FILE_TYPE_DIRECTORY, FILE_TYPE_DIRECTORY,
-                                       FILE_TYPE_FILE,      FILE_TYPE_FILE,
-                                       FILE_TYPE_FILE,      FILE_TYPE_FILE,
-                                       FILE_TYPE_FILE};
+    unsigned int num_of_files = 12;
+    std::string paths[num_of_files]{
+        "./dir1/testing",
+        "./dir1/testing/nested_one",
+        "./dir1/testing/nested_one/nested_two",
+        "./dir1/testing/nested_one/nested_two/nested_three",
+        "./dir1/testing/nested_one/nested_two/nested_three/nested_four",
+        "./dir1/testing/nested_one/nested_two/nested_three/nested_four/"
+        "example_five.txt",
+        "./dir1/testing/test",
+        "./dir1/testing/test/example_one.txt",
+        "./dir1/testing/test/example_two.txt",
+        "./dir1/testing/example_three.txt",
+        "./dir1/testing/example_four.txt",
+        "./dir1/example_five.txt"};
+    enum file_type types[num_of_files]{
+        FILE_TYPE_DIRECTORY, FILE_TYPE_DIRECTORY, FILE_TYPE_DIRECTORY,
+        FILE_TYPE_DIRECTORY, FILE_TYPE_DIRECTORY, FILE_TYPE_FILE,
+        FILE_TYPE_DIRECTORY, FILE_TYPE_FILE,      FILE_TYPE_FILE,
+        FILE_TYPE_FILE,      FILE_TYPE_FILE,      FILE_TYPE_FILE};
     for (int i = 0; i < num_of_files; ++i) {
       visitor_callback(paths[i], types[i], context);
     }
@@ -197,13 +205,17 @@ void testBuildCacheCreatesDirectories() {
   // 2, desktop 1
   // 3, dir1, 2
   // 4, testing, 3
-  // 5, test, 4
-  // 6, documents, 1,
-  // 7, dir2, 6,
-  // 8, testing, 7,
-  // 9  dir3, 7,
-  // 10, testing, 9,
-  // 11, test, 10
+  // 5, nested_one, 4
+  // 6, nested_two, 5
+  // 7, nested_three, 6
+  // 8, nested_four, 7
+  // 9, test, 4
+  // 10, documents, 1,
+  // 11, dir2, 10,
+  // 12, testing, 11,
+  // 13, dir3, 11,
+  // 14, testing, 13,
+  // 15, test, 14
 
   // Arrange
   resetMockStates();
@@ -215,9 +227,11 @@ void testBuildCacheCreatesDirectories() {
 
   // Assert
   std::vector<directory_input> expected_created_directories{
-      {-1, "testing"}, {1, "desktop"},   {2, "dir1"},  {3, "testing"},
-      {4, "test"},     {1, "documents"}, {6, "dir2"},  {7, "testing"},
-      {7, "dir3"},     {9, "testing"},   {10, "test"},
+      {-1, "testing"},     {1, "desktop"},     {2, "dir1"},
+      {3, "testing"},      {4, "nested_one"},  {5, "nested_two"},
+      {6, "nested_three"}, {7, "nested_four"}, {4, "test"},
+      {1, "documents"},    {10, "dir2"},       {11, "testing"},
+      {11, "dir3"},        {13, "testing"},    {14, "test"},
   };
 
   assert(expected_created_directories.size() == created_directories.size());
@@ -240,15 +254,16 @@ void testBuildCacheCreatesHashes() {
 
   // Assert
   std::vector<hash_input> expected_created_hashes{
-      {5, "example_one.txt", uniqueTestHash()},
-      {5, "example_two.txt", uniqueTestHash()},
+      {8, "example_five.txt", uniqueTestHash()},
+      {9, "example_one.txt", uniqueTestHash()},
+      {9, "example_two.txt", uniqueTestHash()},
       {4, "example_three.txt", uniqueTestHash()},
       {4, "example_four.txt", uniqueTestHash()},
       {3, "example_five.txt", uniqueTestHash()},
-      {7, "example_one.txt", uniqueTestHash()},
-      {8, "example_two.txt", uniqueTestHash()},
-      {8, "example_three.txt", uniqueTestHash()},
-      {11, "example_four.txt", uniqueTestHash()},
+      {11, "example_one.txt", uniqueTestHash()},
+      {12, "example_two.txt", uniqueTestHash()},
+      {12, "example_three.txt", uniqueTestHash()},
+      {15, "example_four.txt", uniqueTestHash()},
   };
   assert(expected_created_hashes.size() == created_hashes.size());
   for (int i = 0; i < expected_created_hashes.size(); ++i) {

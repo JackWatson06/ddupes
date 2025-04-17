@@ -7,6 +7,11 @@
 /* -------------------------------------------------------------------------- */
 /*                                    Mocks                                   */
 /* -------------------------------------------------------------------------- */
+hash emptyTestHash() {
+  return new uint8_t[MD5_DIGEST_LENGTH]{0, 0, 0, 0, 0, 0, 0, 0,
+                                        0, 0, 0, 0, 0, 0, 0, 0};
+}
+
 void assertDuplicatePathSegments(duplicate_path_segments &segment_one,
                                  duplicate_path_segments &segment_two) {
   for (int i = 0; i < segment_one.size(); ++i) {
@@ -328,6 +333,58 @@ void testBuildINodeTree() {
           }}}};
 
   assert(actual_directory_tree == expected_directory_tree);
+}
+
+/* ---------------------------- removeEmptyInodes --------------------------- */
+void testRemovingEmptyInodes() {
+  // Arrange
+  inode test_directory_tree{
+      1,
+      "/",
+      nullptr,
+      {inode{2,
+             "home",
+             nullptr,
+             {
+                 inode{3,
+                       "dir1",
+                       nullptr,
+                       {inode{4, "testing4.txt", emptyTestHash()}}},
+                 inode{3,
+                       "dir2",
+                       nullptr,
+                       {
+                           inode{4, "testing2.txt", uniqueTestHash(196)},
+                           inode{4, "testing3.txt", emptyTestHash()},
+                           inode{4,
+                                 "sub_dir",
+                                 nullptr,
+                                 {inode{5, "testing1.txt", emptyTestHash()}}},
+                       }},
+             }}}};
+  // Act
+  removeEmptyINodes(test_directory_tree);
+
+  // Assert
+  std::vector<inode> dir2_inode;
+
+  inode expected_directory_tree{
+      1,
+      "/",
+      nullptr,
+      {inode{2,
+             "home",
+             nullptr,
+             {
+                 inode{3,
+                       "dir2",
+                       nullptr,
+                       {
+                           inode{4, "testing2.txt", uniqueTestHash(196)},
+                       }},
+             }}}};
+
+  assert(test_directory_tree == expected_directory_tree);
 }
 
 /* ----------------------------- calculateHashes ---------------------------- */
@@ -968,6 +1025,7 @@ int main() {
   testBuildingParentHashMapWithDirectoryIdOverflow();
   testBuildingParentHashMapWithDirectoryIdEqualToSize();
   testBuildINodeTree();
+  testRemovingEmptyInodes();
   testCalculateHashes();
   testCalculateHashesErrorWhenLeafNodeDoesNotHaveHash();
   testCountShortestDepth();
