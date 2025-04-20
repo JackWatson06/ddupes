@@ -1,7 +1,5 @@
 #include "extract.h"
 
-#include "./fs/file_system.h"
-
 /**
  * TODO:
  * - Test to make sure we don't pass in the same path.
@@ -9,9 +7,22 @@
 
 constexpr char DELIMITER = '/';
 
+struct argument_path {
+  std::string relative_path;
+  std::vector<std::string> canonicalized_path_tokens;
+
+  bool operator==(const argument_path &rhs) const;
+};
+
+struct root_calc_result {
+  std::string root_path;
+  std::vector<argument_path> argument_paths;
+
+  bool operator==(const root_calc_result &rhs) const;
+};
+
 struct file_visitor_services {
-  create_cache_database_service db;
-  create_cache_file_system_service fs;
+  sqlite3 *db;
   std::string relative_argument_path;
   std::vector<int> directory_stack;
   int depth;
@@ -26,8 +37,8 @@ bool root_calc_result::operator==(const root_calc_result &rhs) const {
   return rhs.root_path == root_path && rhs.argument_paths == argument_paths;
 }
 
-void copyFromSecondVector(string_vector &vector_one,
-                          string_vector &vector_two) {
+void copyFromSecondVector(std::vector<std::string> &vector_one,
+                          std::vector<std::string> &vector_two) {
   for (const std::string string : vector_two) {
     vector_one.push_back(string);
   }
@@ -45,25 +56,12 @@ std::string removeBeginningSlash(std::string &path) {
   return path;
 }
 
-string_vector tokenizeRootPath(std::string &path) {
-  string_vector tokens = {};
-  if (path.size() == 0) {
-    return tokens;
-  }
-
-  tokens.push_back("/");
-
-  string_vector tokenized_relative_path = tokenizeRelativePath(path);
-  copyFromSecondVector(tokens, tokenized_relative_path);
-  return tokens;
-}
-
-string_vector tokenizeRelativePath(std::string &path) {
+std::vector<std::string> tokenizeRelativePath(std::string &path) {
   if (path.size() == 0) {
     return {};
   }
 
-  string_vector tokens = {};
+  std::vector<std::string> tokens = {};
   std::string path_without_slash = removeBeginningSlash(path);
 
   std::string temp_string{};
@@ -85,14 +83,28 @@ string_vector tokenizeRelativePath(std::string &path) {
   return tokens;
 }
 
-int countShortestTokenizePath(std::vector<string_vector> &argument_paths) {
+std::vector<std::string> tokenizeRootPath(std::string &path) {
+  std::vector<std::string> tokens = {};
+  if (path.size() == 0) {
+    return tokens;
+  }
+
+  tokens.push_back("/");
+
+  std::vector<std::string> tokenized_relative_path = tokenizeRelativePath(path);
+  copyFromSecondVector(tokens, tokenized_relative_path);
+  return tokens;
+}
+
+int countShortestTokenizePath(
+    std::vector<std::vector<std::string>> &argument_paths) {
   if (argument_paths.size() == 0) {
     return 0;
   }
 
   int shortest_path = argument_paths[0].size();
 
-  for (const string_vector argument_path : argument_paths) {
+  for (const std::vector<std::string> argument_path : argument_paths) {
     if (argument_path.size() < shortest_path) {
       shortest_path = argument_path.size();
     }
@@ -101,14 +113,14 @@ int countShortestTokenizePath(std::vector<string_vector> &argument_paths) {
   return shortest_path;
 }
 
-root_calc_result calcRootPath(string_vector &relative_argument_paths,
-                              create_cache_file_system_service fs_services) {
-  string_vector qualified_paths{};
+root_calc_result calcRootPath(std::vector<std::string> &relative_argument_paths,
+                              sqlite3 *db) {
+  std::vector<std::string> qualified_paths{};
   for (std::string path : relative_argument_paths) {
-    qualified_paths.push_back(fs_services.qualifyRelativePath(path));
+    qualified_paths.push_back(qualifyRelativeURL(path));
   }
 
-  std::vector<string_vector> tokenized_paths{};
+  std::vector<std::vector<std::string>> tokenized_paths{};
   for (std::string qualified_path : qualified_paths) {
     tokenized_paths.push_back(tokenizeRootPath(qualified_path));
   }
@@ -181,7 +193,8 @@ void fileVisitorCallback(const std::string path, const enum file_type type,
 
   std::string path_without_relative =
       removeLeadingRelativePath(file_services->relative_argument_path, path);
-  string_vector tokenize_path = tokenizeRelativePath(path_without_relative);
+  std::vector<std::string> tokenize_path =
+      tokenizeRelativePath(path_without_relative);
   std::string file_node_name = tokenize_path[tokenize_path.size() - 1];
 
   if (file_services->depth != tokenize_path.size() - 1) {
@@ -194,52 +207,46 @@ void fileVisitorCallback(const std::string path, const enum file_type type,
 
   if (type == FILE_TYPE_FILE) {
     uint8_t file_hash[MD5_DIGEST_LENGTH];
-    file_services->fs.extractHash(file_hash, path);
-    file_services->db.createHash(
-        file_services->db.db,
-        {.directory_id = file_services->directory_stack.back(),
-         .name = file_node_name.c_str(),
-         .hash = file_hash});
+    extractHash(file_hash, path);
+    createHash(file_services->db,
+               {.directory_id = file_services->directory_stack.back(),
+                .name = file_node_name.c_str(),
+                .hash = file_hash});
     return;
   }
 
   ++file_services->depth;
-  int directory_id = file_services->db.createDirectory(
-      file_services->db.db, {.parent_id = file_services->directory_stack.back(),
-                             .name = file_node_name.c_str()});
+  int directory_id = createDirectory(
+      file_services->db, {.parent_id = file_services->directory_stack.back(),
+                          .name = file_node_name.c_str()});
   file_services->directory_stack.push_back(directory_id);
 }
 
-void buildCache(string_vector &paths, create_cache_database_service db_services,
-                create_cache_file_system_service fs_services) {
-  db_services.resetDB(db_services.db);
+void buildCache(std::vector<std::string> &paths, sqlite3 *db) {
+  resetDB(db);
 
-  root_calc_result root_calc_result = calcRootPath(paths, fs_services);
+  root_calc_result root_calc_result = calcRootPath(paths, db);
 
-  int root_id = db_services.createDirectory(
-      db_services.db,
-      {.parent_id = -1, .name = root_calc_result.root_path.c_str()});
+  int root_id = createDirectory(
+      db, {.parent_id = -1, .name = root_calc_result.root_path.c_str()});
 
   std::vector<int> directory_stack{root_id};
   for (const argument_path path : root_calc_result.argument_paths) {
     for (const std::string token : path.canonicalized_path_tokens) {
-      directory_stack.push_back(db_services.createDirectory(
-          db_services.db,
-          {.parent_id = directory_stack.back(), .name = token.c_str()}));
+      directory_stack.push_back(createDirectory(
+          db, {.parent_id = directory_stack.back(), .name = token.c_str()}));
     }
 
-    file_visitor_services file_visitor_services{
-        db_services, fs_services, path.relative_path, directory_stack, 0};
-    fs_services.visitFiles(path.relative_path, fileVisitorCallback,
-                           &file_visitor_services);
+    file_visitor_services file_visitor_services{db, path.relative_path,
+                                                directory_stack, 0};
+    visitFiles(path.relative_path, fileVisitorCallback, &file_visitor_services);
 
     directory_stack = {root_id};
   }
 }
 
-file_hash_rows extractUsingCache(extract_database_service db_services) {
-  return {db_services.fetchAllDirectories(db_services.db),
-          db_services.fetchAllHashes(db_services.db)};
+file_hash_rows extractUsingCache(sqlite3 *db) {
+  return {fetchAllDirectories(db), fetchAllHashes(db)};
 }
 
 /**

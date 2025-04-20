@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "../src/fs/file_system.h"
+#include "../src/fs/file_system.cpp"
 #include "./data.cpp"
 
 struct FileNode {

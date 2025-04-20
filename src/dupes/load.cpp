@@ -2,6 +2,11 @@
 
 #include <algorithm>
 
+typedef std::vector<std::string> str_path_segments;
+typedef std::vector<str_path_segments> str_duplicate_path_segments;
+typedef std::vector<str_duplicate_path_segments> str_duplicate_path_seg_set;
+typedef std::vector<std::vector<std::string>> duplicate_inode_output;
+
 str_duplicate_path_seg_set convertToStrings(duplicate_path_seg_set const &set) {
   str_duplicate_path_seg_set set_of_duplicate_path_seg_strings{set.size()};
 
