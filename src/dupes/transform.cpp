@@ -14,6 +14,35 @@
  * of memory for this.
  */
 
+typedef std::vector<directory_table_row_const *> *parent_directory_map;
+typedef std::vector<directory_table_row_const *> const
+    *const parent_directory_map_const;
+// TODO How do I type these as const?
+typedef std::vector<hash_table_row_const *> *parent_hash_map;
+typedef std::vector<hash_table_row_const *> const *const parent_hash_map_const;
+
+struct inode {
+  int depth;
+  char const *path_segment;
+  hash node_hash;
+  std::vector<inode> inodes;
+  inode const *parent_node;
+
+  bool operator==(inode const &rhs) const;
+};
+
+struct inode_hasher {
+  std::size_t operator()(hash_const k) const;
+};
+
+struct inode_key_equal {
+  bool operator()(hash_const lhs, hash_const rhs) const;
+};
+
+typedef std::unordered_map<hash, std::vector<inode const *>, inode_hasher,
+                           inode_key_equal>
+    hash_inode_map;
+
 bool inode::operator==(inode const &rhs) const {
   return compareStrings(path_segment, rhs.path_segment) &&
          compareHashes(node_hash, rhs.node_hash) && inodes == rhs.inodes &&
@@ -77,7 +106,7 @@ parent_hash_map buildParentHashMap(hash_table_row::rows const &hash_table_rows,
 inode buildINodeTree(parent_directory_map_const directory_map,
                      parent_hash_map_const hash_map,
                      directory_table_row_const *const current_directory_row,
-                     int depth) {
+                     int depth = 1) {
   inode inode_tree{depth, stringDup(current_directory_row->name), nullptr};
   // Creates a new inode on the stack. Takes the size of the sizeof(char
   // const*), sizeof(hash), and sizeof(vector).

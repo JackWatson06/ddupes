@@ -2,7 +2,9 @@
 #include <cassert>
 #include <filesystem>
 
-#include "../src/sqlite/sqlite.h"
+#include "../src/lib.cpp"
+#include "../src/sqlite/operators.cpp"
+#include "../src/sqlite/sqlite.cpp"
 #include "./data.cpp"
 
 // TODO: Test with spaces.

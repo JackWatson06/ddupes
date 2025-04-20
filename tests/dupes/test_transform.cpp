@@ -1,8 +1,9 @@
 #include <cassert>
 #include <cstdint>
 
-#include "../src/transform.h"
-#include "./data.cpp"
+#include "../../src/dupes/transform.cpp"
+#include "../../src/lib.cpp"
+#include "../data.cpp"
 
 /* -------------------------------------------------------------------------- */
 /*                                    Mocks                                   */

@@ -1,6 +1,8 @@
 #include <cassert>
 
-#include "../src/extract_output.h"
+#include "../../src/dupes/extract_output.cpp"
+#include "../../src/lib.cpp"
+#include "../../src/sqlite/operators.cpp"
 
 /* ------------------------------ FileHashRows ------------------------------ */
 void testFileHashRowsEqualOperator() {

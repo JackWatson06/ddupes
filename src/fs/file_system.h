@@ -11,7 +11,6 @@ typedef void (*file_visitor_callback)(const std::string, const enum file_type,
 /* -------------------------------------------------------------------------- */
 /*                                  Functions                                 */
 /* -------------------------------------------------------------------------- */
-int testing();
 std::string qualifyRelativeURL(std::string &relative_path);
 void visitFiles(const std::string &directory_path,
                 file_visitor_callback visitor_callback, void *context);

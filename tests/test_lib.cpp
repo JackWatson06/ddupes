@@ -1,6 +1,6 @@
 #include <assert.h>
 
-#include "../src/lib.h"
+#include "../src/lib.cpp"
 #include "./data.cpp"
 
 /* ------------------------------ stringLength ------------------------------ */

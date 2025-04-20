@@ -1,6 +1,6 @@
 #pragma once
 
-#include "./sqlite/sqlite.h"
+#include "../sqlite/sqlite.h"
 
 struct file_hash_rows {
   directory_table_row::rows directory_rows;

@@ -3,10 +3,11 @@
 #include <cassert>
 #include <cstring>
 
-#include "../src/extract.h"
-#include "../src/fs/file_system.h"
-#include "../src/sqlite/sqlite.h"
-#include "./data.cpp"
+#include "../../src/dupes/extract.cpp"
+#include "../../src/dupes/extract_output.cpp"
+#include "../../src/lib.cpp"
+#include "../../src/sqlite/operators.cpp"
+#include "../data.cpp"
 
 /* -------------------------------------------------------------------------- */
 /*                                    Mocks                                   */
@@ -34,20 +35,20 @@
 /home/testing/documents/dir2/testing/example_four.txt
 */
 
-std::string mockQualifyRelativePath(std::string &path) {
-  if (path == "./dir1/") {
+std::string qualifyRelativeURL(std::string &relative_path) {
+  if (relative_path == "./dir1/") {
     return "/home/testing/desktop/dir1";
   }
 
-  if (path == "../documents/dir2/") {
+  if (relative_path == "../documents/dir2/") {
     return "/home/testing/documents/dir2";
   }
 
-  return "/home/testing/desktop/" + path;
+  return "/home/testing/desktop/" + relative_path;
 }
 
-void mockVisitFiles(const std::string &directory_path,
-                    file_visitor_callback visitor_callback, void *context) {
+void visitFiles(const std::string &directory_path,
+                file_visitor_callback visitor_callback, void *context) {
   if (directory_path == "./dir1/") {
     unsigned int num_of_files = 12;
     std::string paths[num_of_files]{
@@ -98,14 +99,10 @@ void mockVisitFiles(const std::string &directory_path,
   }
 }
 
-void mockExtractHash(uint8_t *hash, std::string path) {
+void extractHash(uint8_t *hash, std::string path) {
   for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
     hash[i] = 255;
   }
-}
-
-create_cache_file_system_service mockCacheFileSystemServices() {
-  return {mockQualifyRelativePath, mockVisitFiles, mockExtractHash};
 }
 
 /* ------------------------------ Database Mock ----------------------------- */
@@ -119,32 +116,29 @@ const hash_table_row::rows MOCK_HASHES{
     {3, "testing_two.txt", uniqueTestHash()},
     {4, "testing_three.txt", uniqueTestHash()}};
 
+sqlite3 *MOCK_DB = nullptr;
+
 bool reset_db = false;
 std::vector<directory_input> created_directories{};
 std::vector<hash_input> created_hashes{};
 int created_directory_id = 0;
 
-void mockResetDB(sqlite3 *db) { reset_db = true; }
+void resetDB(sqlite3 *db) { reset_db = true; }
 
-unsigned int mockFetchDirectoryIdByName(sqlite3 *db, const std::string &name) {
-  return 1;
-}
-
-directory_table_row::rows mockFetchAllDirectories(sqlite3 *db) {
+directory_table_row::rows fetchAllDirectories(sqlite3 *db) {
   return MOCK_DIRECTORIES;
 }
 
-int mockCreateDirectory(sqlite3 *db,
-                        directory_input const &directory_table_input) {
+int createDirectory(sqlite3 *db, directory_input const &directory_table_input) {
   created_directories.push_back(
       directory_input{.parent_id = directory_table_input.parent_id,
                       .name = stringDup(directory_table_input.name)});
   return ++created_directory_id;
 }
 
-hash_table_row::rows mockFetchAllHashes(sqlite3 *db) { return MOCK_HASHES; }
+hash_table_row::rows fetchAllHashes(sqlite3 *db) { return MOCK_HASHES; }
 
-void mockCreateHash(sqlite3 *db, hash_input const &hash_table_input) {
+void createHash(sqlite3 *db, hash_input const &hash_table_input) {
   uint8_t *hash_buffer = new uint8_t[MD5_DIGEST_LENGTH];
   std::memcpy(hash_buffer, hash_table_input.hash, MD5_DIGEST_LENGTH);
 
@@ -152,14 +146,6 @@ void mockCreateHash(sqlite3 *db, hash_input const &hash_table_input) {
       hash_input{.directory_id = hash_table_input.directory_id,
                  .name = stringDup(hash_table_input.name),
                  .hash = hash_buffer});
-}
-
-create_cache_database_service mockCacheDatabaseServices() {
-  return {nullptr, mockResetDB, mockCreateDirectory, mockCreateHash};
-}
-
-extract_database_service mockExtractDatabaseServices() {
-  return {nullptr, mockFetchAllDirectories, mockFetchAllHashes};
 }
 
 void resetMockStates() {
@@ -175,8 +161,7 @@ void resetMockStates() {
 /* --------------------------------- extract -------------------------------- */
 void testExtract() {
   // Act
-  file_hash_rows actual_file_hash_rows =
-      extractUsingCache(mockExtractDatabaseServices());
+  file_hash_rows actual_file_hash_rows = extractUsingCache(MOCK_DB);
 
   // Assert
   file_hash_rows expected_file_hash_rows{MOCK_DIRECTORIES, MOCK_HASHES};
@@ -187,11 +172,10 @@ void testExtract() {
 void testBuildCacheResetsDB() {
   // Arrange
   resetMockStates();
-  string_vector test_paths = {"./dir1/", "../documents/dir2/"};
+  std::vector<std::string> test_paths = {"./dir1/", "../documents/dir2/"};
 
   // Act
-  buildCache(test_paths, mockCacheDatabaseServices(),
-             mockCacheFileSystemServices());
+  buildCache(test_paths, MOCK_DB);
 
   // Assert
   assert(reset_db);
@@ -219,11 +203,10 @@ void testBuildCacheCreatesDirectories() {
 
   // Arrange
   resetMockStates();
-  string_vector test_paths = {"./dir1/", "../documents/dir2/"};
+  std::vector<std::string> test_paths = {"./dir1/", "../documents/dir2/"};
 
   // Act
-  buildCache(test_paths, mockCacheDatabaseServices(),
-             mockCacheFileSystemServices());
+  buildCache(test_paths, MOCK_DB);
 
   // Assert
   std::vector<directory_input> expected_created_directories{
@@ -246,11 +229,10 @@ void testBuildCacheCreatesDirectories() {
 void testBuildCacheCreatesHashes() {
   // Arrange
   resetMockStates();
-  string_vector test_paths = {"./dir1/", "../documents/dir2/"};
+  std::vector<std::string> test_paths = {"./dir1/", "../documents/dir2/"};
 
   // Act
-  buildCache(test_paths, mockCacheDatabaseServices(),
-             mockCacheFileSystemServices());
+  buildCache(test_paths, MOCK_DB);
 
   // Assert
   std::vector<hash_input> expected_created_hashes{
@@ -282,10 +264,10 @@ void testTokenizingPathWithRoot() {
   std::string test_path = "/";
 
   // Act
-  string_vector tokenized_path = tokenizeRootPath(test_path);
+  std::vector<std::string> tokenized_path = tokenizeRootPath(test_path);
 
   // Arrange
-  string_vector expected_tokenized_path{"/"};
+  std::vector<std::string> expected_tokenized_path{"/"};
   assert(tokenized_path == expected_tokenized_path);
 }
 
@@ -294,10 +276,10 @@ void testTokenizingPathWithRootFolder() {
   std::string test_path = "/testing";
 
   // Act
-  string_vector tokenized_path = tokenizeRootPath(test_path);
+  std::vector<std::string> tokenized_path = tokenizeRootPath(test_path);
 
   // Arrange
-  string_vector expected_tokenized_path{"/", "testing"};
+  std::vector<std::string> expected_tokenized_path{"/", "testing"};
   assert(tokenized_path == expected_tokenized_path);
 }
 
@@ -306,10 +288,11 @@ void testTokenizingPathWithFile() {
   std::string test_path = "/testing/testing.txt";
 
   // Act
-  string_vector tokenized_path = tokenizeRootPath(test_path);
+  std::vector<std::string> tokenized_path = tokenizeRootPath(test_path);
 
   // Arrange
-  string_vector expected_tokenized_path{"/", "testing", "testing.txt"};
+  std::vector<std::string> expected_tokenized_path{"/", "testing",
+                                                   "testing.txt"};
   assert(tokenized_path == expected_tokenized_path);
 }
 
@@ -318,10 +301,10 @@ void testTokenizingPathWithNestedFolders() {
   std::string test_path = "/testing/test";
 
   // Act
-  string_vector tokenized_path = tokenizeRootPath(test_path);
+  std::vector<std::string> tokenized_path = tokenizeRootPath(test_path);
 
   // Arrange
-  string_vector expected_tokenized_path{"/", "testing", "test"};
+  std::vector<std::string> expected_tokenized_path{"/", "testing", "test"};
   assert(tokenized_path == expected_tokenized_path);
 }
 
@@ -330,10 +313,10 @@ void testTokenizingWithTrailingSlash() {
   std::string test_path = "/testing/test/";
 
   // Act
-  string_vector tokenized_path = tokenizeRootPath(test_path);
+  std::vector<std::string> tokenized_path = tokenizeRootPath(test_path);
 
   // Arrange
-  string_vector expected_tokenized_path{"/", "testing", "test"};
+  std::vector<std::string> expected_tokenized_path{"/", "testing", "test"};
   assert(tokenized_path == expected_tokenized_path);
 }
 
@@ -342,11 +325,11 @@ void testTokenizingNotAtRoot() {
   std::string test_path = "testing/test/example_one.txt";
 
   // Act
-  string_vector tokenized_path = tokenizeRootPath(test_path);
+  std::vector<std::string> tokenized_path = tokenizeRootPath(test_path);
 
   // Arrange
-  string_vector expected_tokenized_path{"/", "testing", "test",
-                                        "example_one.txt"};
+  std::vector<std::string> expected_tokenized_path{"/", "testing", "test",
+                                                   "example_one.txt"};
   assert(tokenized_path == expected_tokenized_path);
 }
 
@@ -355,10 +338,10 @@ void testTokenizingEmptyRoot() {
   std::string test_path = "";
 
   // Act
-  string_vector tokenized_path = tokenizeRootPath(test_path);
+  std::vector<std::string> tokenized_path = tokenizeRootPath(test_path);
 
   // Arrange
-  string_vector expected_tokenized_path{};
+  std::vector<std::string> expected_tokenized_path{};
   assert(tokenized_path == expected_tokenized_path);
 }
 
@@ -368,10 +351,11 @@ void testTokenizingRelativePath() {
   std::string test_path = "testing/test/example_one.txt";
 
   // Act
-  string_vector tokenized_path = tokenizeRelativePath(test_path);
+  std::vector<std::string> tokenized_path = tokenizeRelativePath(test_path);
 
   // Arrange
-  string_vector expected_tokenized_path{"testing", "test", "example_one.txt"};
+  std::vector<std::string> expected_tokenized_path{"testing", "test",
+                                                   "example_one.txt"};
   assert(tokenized_path == expected_tokenized_path);
 }
 
@@ -380,10 +364,11 @@ void testTokenizingRelativePathWithRootSlash() {
   std::string test_path = "/testing/test/example_one.txt";
 
   // Act
-  string_vector tokenized_path = tokenizeRelativePath(test_path);
+  std::vector<std::string> tokenized_path = tokenizeRelativePath(test_path);
 
   // Arrange
-  string_vector expected_tokenized_path{"testing", "test", "example_one.txt"};
+  std::vector<std::string> expected_tokenized_path{"testing", "test",
+                                                   "example_one.txt"};
   assert(tokenized_path == expected_tokenized_path);
 }
 
@@ -392,17 +377,17 @@ void testTokenizingEmptyPath() {
   std::string test_path = "";
 
   // Act
-  string_vector tokenized_path = tokenizeRelativePath(test_path);
+  std::vector<std::string> tokenized_path = tokenizeRelativePath(test_path);
 
   // Arrange
-  string_vector expected_tokenized_path{};
+  std::vector<std::string> expected_tokenized_path{};
   assert(tokenized_path == expected_tokenized_path);
 }
 
 /* ---------------------------- countShortestPath --------------------------- */
 void testCountShortestPath() {
   // Arrange
-  std::vector<string_vector> shortest_paths{
+  std::vector<std::vector<std::string>> shortest_paths{
       {"/", "testing", "test"},
       {"/", "testing"},
       {"/", "testing", "test", "testing_this"}};
@@ -416,7 +401,7 @@ void testCountShortestPath() {
 
 void testCountShortestPathWithEmptyDir() {
   // Arrange
-  std::vector<string_vector> shortest_paths{
+  std::vector<std::vector<std::string>> shortest_paths{
       {"/", "testing", "test"}, {}, {"/", "testing", "test", "testing_this"}};
 
   // Act
@@ -429,11 +414,11 @@ void testCountShortestPathWithEmptyDir() {
 /* ------------------------------ calcRootPath ------------------------------ */
 void testCalcRootPath() {
   // Arrange
-  string_vector test_arguments{"dir1/testing/test", "dir2/testing"};
+  std::vector<std::string> test_arguments{"dir1/testing/test", "dir2/testing"};
 
   // Act
   root_calc_result actual_argument_paths =
-      calcRootPath(test_arguments, mockCacheFileSystemServices());
+      calcRootPath(test_arguments, MOCK_DB);
 
   // Assert
   root_calc_result expected_argument_paths{
@@ -445,11 +430,11 @@ void testCalcRootPath() {
 
 void testCalcRootWithEmpty() {
   // Arrange
-  string_vector test_arguments{"", "dir2/testing"};
+  std::vector<std::string> test_arguments{"", "dir2/testing"};
 
   // Act
   root_calc_result actual_argument_paths =
-      calcRootPath(test_arguments, mockCacheFileSystemServices());
+      calcRootPath(test_arguments, MOCK_DB);
 
   // Assert
   root_calc_result expected_argument_paths{
