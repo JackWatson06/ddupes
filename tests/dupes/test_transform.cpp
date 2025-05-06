@@ -3,6 +3,7 @@
 
 #include "../../src/dupes/transform.cpp"
 #include "../../src/lib.cpp"
+#include "../../src/sqlite/operators.cpp"
 #include "../data.cpp"
 
 /* -------------------------------------------------------------------------- */
@@ -119,6 +120,20 @@ inode *createTestBranch(std::vector<char const *> path) {
 /* -------------------------------------------------------------------------- */
 /*                                    Tests                                   */
 /* -------------------------------------------------------------------------- */
+/* ----------------------------- file_hash_rows ----------------------------- */
+void testFileHashRowsEqualOperator() {
+  // Arrange
+  file_hash_rows test_one{{directory_table_row{1, "test", 1}},
+                          {hash_table_row{1, 1, "test", nullptr}}};
+  file_hash_rows test_two{{directory_table_row{1, "test", 1}},
+                          {hash_table_row{1, 1, "test", nullptr}}};
+
+  // Act
+  bool equality_test = test_one == test_two;
+
+  // Assert
+  assert(equality_test);
+}
 
 /* ------------------------- buildParentDirectoryMap ------------------------ */
 void testBuildingParentDirectoryMap() {
@@ -196,11 +211,11 @@ void testBuildingParentDirectoryMapWithParentIdEqualToSize() {
 void testBuildingParentHashMap() {
   // Arrange
   hash_table_row::rows test_hash_rows{
-      {1, "example.txt", uniqueTestHash()},
-      {1, "example_two.txt", uniqueTestHash()},
-      {2, "example_three.txt", uniqueTestHash()},
-      {3, "example_four.txt", uniqueTestHash()},
-      {4, "example_five.txt", uniqueTestHash()}};
+      {1, 1, "example.txt", uniqueTestHash()},
+      {2, 1, "example_two.txt", uniqueTestHash()},
+      {3, 2, "example_three.txt", uniqueTestHash()},
+      {4, 3, "example_four.txt", uniqueTestHash()},
+      {5, 4, "example_five.txt", uniqueTestHash()}};
 
   // Act
   parent_hash_map actual_hash_map_results =
@@ -221,11 +236,11 @@ void testBuildingParentHashMap() {
 void testBuildingParentHashMapWithDirectoryIdOverflow() {
   // Arrange
   hash_table_row::rows test_hash_rows{
-      {1, "example.txt", uniqueTestHash()},
-      {1, "example_two.txt", uniqueTestHash()},
-      {2, "example_three.txt", uniqueTestHash()},
-      {3, "example_four.txt", uniqueTestHash()},
-      {11, "example_five.txt", uniqueTestHash()}};
+      {1, 1, "example.txt", uniqueTestHash()},
+      {2, 1, "example_two.txt", uniqueTestHash()},
+      {3, 2, "example_three.txt", uniqueTestHash()},
+      {4, 3, "example_four.txt", uniqueTestHash()},
+      {5, 11, "example_five.txt", uniqueTestHash()}};
 
   // Act
   parent_hash_map actual_hash_map_results =
@@ -245,11 +260,11 @@ void testBuildingParentHashMapWithDirectoryIdOverflow() {
 void testBuildingParentHashMapWithDirectoryIdEqualToSize() {
   // Arrange
   hash_table_row::rows test_hash_rows{
-      {1, "example.txt", uniqueTestHash()},
-      {1, "example_two.txt", uniqueTestHash()},
-      {2, "example_three.txt", uniqueTestHash()},
-      {3, "example_four.txt", uniqueTestHash()},
-      {5, "example_five.txt", uniqueTestHash()}};
+      {1, 1, "example.txt", uniqueTestHash()},
+      {2, 1, "example_two.txt", uniqueTestHash()},
+      {3, 2, "example_three.txt", uniqueTestHash()},
+      {4, 3, "example_four.txt", uniqueTestHash()},
+      {5, 5, "example_five.txt", uniqueTestHash()}};
 
   // Act
   parent_hash_map actual_hash_map_results =
@@ -278,10 +293,10 @@ void testBuildINodeTree() {
                                                 {5, "sub_dir", 4}};
 
   hash_table_row::rows test_hash_rows = {
-      {5, "testing1.txt", uniqueTestHash(128)},
-      {4, "testing2.txt", uniqueTestHash(196)},
-      {4, "testing3.txt", uniqueTestHash(200)},
-      {3, "testing4.txt", uniqueTestHash(255)}};
+      {1, 5, "testing1.txt", uniqueTestHash(128)},
+      {2, 4, "testing2.txt", uniqueTestHash(196)},
+      {3, 4, "testing3.txt", uniqueTestHash(200)},
+      {4, 3, "testing4.txt", uniqueTestHash(255)}};
 
   parent_directory_map test_directory_maps =
       new std::vector<directory_table_row const *>[6]{
@@ -977,18 +992,18 @@ void testTransforming() {
       {10, "dragonfruit", 5}, {11, "grapefruit", 10}};
 
   hash_table_row::rows const test_hash_results = {
-      {1, "one.txt", uniqueTestHash(1)},
-      {2, "two.txt", uniqueTestHash(1)},
-      {2, "three.txt", uniqueTestHash(5)},
-      {2, "four.txt", uniqueTestHash(5)},
-      {6, "five.txt", uniqueTestHash(2)},
-      {6, "six.txt", uniqueTestHash(3)},
-      {7, "seven.txt", uniqueTestHash(4)},
-      {8, "eight.txt", uniqueTestHash(2)},
-      {8, "nine.txt", uniqueTestHash(3)},
-      {9, "ten.txt", uniqueTestHash(4)},
-      {10, "eleven.txt", uniqueTestHash(4)},
-      {11, "twelve.txt", uniqueTestHash(4)}};
+      {1, 1, "one.txt", uniqueTestHash(1)},
+      {2, 2, "two.txt", uniqueTestHash(1)},
+      {3, 2, "three.txt", uniqueTestHash(5)},
+      {4, 2, "four.txt", uniqueTestHash(5)},
+      {5, 6, "five.txt", uniqueTestHash(2)},
+      {6, 6, "six.txt", uniqueTestHash(3)},
+      {7, 7, "seven.txt", uniqueTestHash(4)},
+      {8, 8, "eight.txt", uniqueTestHash(2)},
+      {9, 8, "nine.txt", uniqueTestHash(3)},
+      {10, 9, "ten.txt", uniqueTestHash(4)},
+      {11, 10, "eleven.txt", uniqueTestHash(4)},
+      {12, 11, "twelve.txt", uniqueTestHash(4)}};
 
   const file_hash_rows test_file_hash_rows = {
       .directory_rows = test_directory_results, .hash_rows = test_hash_results};
@@ -1019,6 +1034,7 @@ void testTransforming() {
 /*                                    Main                                    */
 /* -------------------------------------------------------------------------- */
 int main() {
+  testFileHashRowsEqualOperator();
   testBuildingParentDirectoryMap();
   testBuildingParentDirectoryMapWithParentIdOverflow();
   testBuildingParentDirectoryMapWithParentIdEqualToSize();

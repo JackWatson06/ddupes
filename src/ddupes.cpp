@@ -1,6 +1,5 @@
+#include "./cli.h"
 #include <iostream>
-
-#include "dupes/dupes.h"
 
 /*
 ** Functionality and Design **
@@ -26,23 +25,27 @@ type. The object will already be constructed. When it's passed in.
 
 /**
 ** TODO: **
-- Improve file reading speed.
-- Fix this logic error:
-- Remove the SQLLite cache at the end.
-- Having a filter to return the folder I am specifically looking at would be
-wonderful.
+- Add update command which will update the cache and remove files that were
+deleted from the operating system.
+- Implement a cli inteface which takes in the operation you want to do (dupes,
+build, or update)
+  - dupes should take in the cache you are building the duplicate list from.
+This will be passed in as a key ex. `--cache inbox`
+  - build should take in the list of paths you are building the cache from. It
+will also take in a `--cache inbox` option which will build the cache using that
+key in the .cache directory.
+  - update should take in the cache key and update the cache accordingly
+`--cache inbox`
+
 - How can we get the home directory of the current user when finding the hash.db
 file.
 - Improve error handling for sqlite
 - Do a map of the .h file dependencies.
 */
 
-int main() {
+int main(int argc, char *argv[]) {
   try {
-    std::vector<std::string> paths = {"tests/testing_dirs/dir1/",
-                                      "tests/testing_dirs/dir2/",
-                                      "tests/testing_dirs/dir3/"};
-    dupes(paths, std::cout, false);
+    process(argc, argv);
   } catch (const std::runtime_error &e) {
     std::cerr << e.what() << std::endl;
   } catch (...) {

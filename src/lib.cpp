@@ -22,6 +22,29 @@ char *stringDup(str_const string_one) {
   return string_two;
 }
 
+char *stringConcat(str_const one, str_const two) {
+  if (one == nullptr || two == nullptr) {
+    return new char[1]{'\0'};
+  }
+
+  int string_one_length = stringLength(one);
+  int string_two_length = stringLength(two);
+  char *concated_string = new char[string_one_length + string_two_length -
+                                   1]; // Minus one because stringLength
+                                       // includes the null terminator.
+
+  for (int i = 0; i < string_one_length - 1; ++i) {
+    concated_string[i] = one[i];
+  }
+
+  for (int i = 0; i < string_two_length - 1; ++i) {
+    concated_string[i + (string_one_length - 1)] = two[i];
+  }
+
+  concated_string[string_one_length + string_two_length - 2] = '\0';
+  return concated_string;
+}
+
 bool compareStrings(str_const string_one, str_const string_two) {
   int i = 0;
   while (string_one[i] != '\0' && string_two[i] != '\0') {

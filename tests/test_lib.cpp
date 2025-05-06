@@ -28,6 +28,72 @@ void testStringDup() {
   assert(compareStrings(test_string_one, string_two));
 }
 
+/* ------------------------------ stringConcat ------------------------------ */
+void testStringConcat() {
+  // Arrange
+  str_const test_string_one = "/home/test";
+  str_const test_string_two = "/.cache/ddupes";
+
+  // Act
+  char *actual_concated_string = stringConcat(test_string_one, test_string_two);
+
+  // Assert
+  str_const expected_string = "/home/test/.cache/ddupes";
+  assert(compareStrings(actual_concated_string, expected_string));
+}
+
+void testStringConcatWithEmptyString() {
+  // Arrange
+  str_const test_string_one = "";
+  str_const test_string_two = "/.cache/ddupes";
+
+  // Act
+  char *actual_concated_string = stringConcat(test_string_one, test_string_two);
+
+  // Assert
+  str_const expected_string = "/.cache/ddupes";
+  assert(compareStrings(actual_concated_string, expected_string));
+}
+
+void testStringConcatWithEmptyStrings() {
+  // Arrange
+  str_const test_string_one = "";
+  str_const test_string_two = "";
+
+  // Act
+  char *actual_concated_string = stringConcat(test_string_one, test_string_two);
+
+  // Assert
+  str_const expected_string = "";
+  assert(compareStrings(actual_concated_string, expected_string));
+}
+
+void testStringConcatWithNullFirstString() {
+  // Arrange
+  str_const test_string_one = nullptr;
+  str_const test_string_two = "";
+
+  // Act
+  char *actual_concated_string = stringConcat(test_string_one, test_string_two);
+
+  // Assert
+  str_const expected_string = "";
+  assert(compareStrings(actual_concated_string, expected_string));
+}
+
+void testStringConcatWithNullSecondString() {
+  // Arrange
+  str_const test_string_one = "";
+  str_const test_string_two = nullptr;
+
+  // Act
+  char *actual_concated_string = stringConcat(test_string_one, test_string_two);
+
+  // Assert
+  str_const expected_string = "";
+  assert(compareStrings(actual_concated_string, expected_string));
+}
+
 /* ----------------------------- compareStrings ----------------------------- */
 void testStringsEqual() {
   // Arrange
@@ -52,6 +118,7 @@ void testStringsNotEqual() {
   // Assert
   assert(equality_test == false);
 }
+
 /* ------------------------------- computeHash ----------------------------- */
 void testHashingAListOfHashes() {
   // Arrange
@@ -149,6 +216,11 @@ void testHashDup() {
 int main() {
   testStringLength();
   testStringDup();
+  testStringConcat();
+  testStringConcatWithEmptyString();
+  testStringConcatWithEmptyStrings();
+  testStringConcatWithNullFirstString();
+  testStringConcatWithNullSecondString();
   testStringsEqual();
   testStringsNotEqual();
   testHashingAListOfHashes();

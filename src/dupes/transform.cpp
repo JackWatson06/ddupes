@@ -63,6 +63,10 @@ bool inode_key_equal::operator()(hash_const lhs, hash_const rhs) const {
   return compareHashes(lhs, rhs);
 }
 
+bool file_hash_rows::operator==(file_hash_rows const &rhs) const {
+  return rhs.directory_rows == directory_rows && rhs.hash_rows == hash_rows;
+}
+
 parent_directory_map
 buildParentDirectoryMap(directory_table_row::rows const &directory_table_rows) {
   parent_directory_map map =
