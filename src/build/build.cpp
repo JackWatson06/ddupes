@@ -1,8 +1,10 @@
-#include "extract.h"
+#include "./build.h"
 
 /**
  * TODO:
  * - Test to make sure we don't pass in the same path.
+ * - Any code that deals with the path seperator should be moved to the fs
+ * module.
  */
 
 constexpr char DELIMITER = '/';
@@ -16,6 +18,7 @@ struct argument_path {
 
 struct root_calc_result {
   std::string root_path;
+  std::string common_path_ancestor;
   std::vector<argument_path> argument_paths;
 
   bool operator==(const root_calc_result &rhs) const;
@@ -34,7 +37,9 @@ bool argument_path::operator==(const argument_path &rhs) const {
 }
 
 bool root_calc_result::operator==(const root_calc_result &rhs) const {
-  return rhs.root_path == root_path && rhs.argument_paths == argument_paths;
+  return rhs.root_path == root_path &&
+         rhs.common_path_ancestor == common_path_ancestor &&
+         rhs.argument_paths == argument_paths;
 }
 
 void copyFromSecondVector(std::vector<std::string> &vector_one,
@@ -113,8 +118,8 @@ int countShortestTokenizePath(
   return shortest_path;
 }
 
-root_calc_result calcRootPath(std::vector<std::string> &relative_argument_paths,
-                              sqlite3 *db) {
+root_calc_result
+calcRootPath(std::vector<std::string> &relative_argument_paths) {
   std::vector<std::string> qualified_paths{};
   for (std::string path : relative_argument_paths) {
     qualified_paths.push_back(qualifyRelativeURL(path));
@@ -130,10 +135,25 @@ root_calc_result calcRootPath(std::vector<std::string> &relative_argument_paths,
     argument_paths.push_back({relative_argument_paths[i], {}});
   }
 
+  if (argument_paths.size() == 1) {
+    std::vector<std::string> root_path = tokenized_paths[0];
+    std::string last_path = root_path[root_path.size() - 1];
+    root_path.pop_back();
+
+    return {.root_path = joinPath(root_path),
+            .common_path_ancestor = last_path,
+            .argument_paths = argument_paths};
+  }
+
   int shortest_path = countShortestTokenizePath(tokenized_paths);
-  // This will determine when the paths split off into seperate sub tress.
-  std::string *root_path = 0;
+
+  // This will determine when the paths split off into seperate sub trees.
+  // TODO Write a test to see what happens if shortest_path would be 0 which
+  // would only happen if qualifyRelativeURL returns a path of length zero.
+  std::vector<std::string> root_path{};
+  std::string *common_path_ancestor = nullptr;
   int unequal_index = 0;
+
   for (; unequal_index < shortest_path; ++unequal_index) {
     bool same_token = false;
     std::string *tmp_path_segment = &tokenized_paths[0][unequal_index];
@@ -145,12 +165,14 @@ root_calc_result calcRootPath(std::vector<std::string> &relative_argument_paths,
     }
 
     if (same_token) {
-      root_path = tmp_path_segment;
+      root_path.push_back(*tmp_path_segment);
+      common_path_ancestor = tmp_path_segment;
       continue;
     }
 
     break;
   }
+  root_path.pop_back();
 
   // Copy the rest of the paths that are not duplicates.
   for (int i = 0; i < tokenized_paths.size(); ++i) {
@@ -160,11 +182,10 @@ root_calc_result calcRootPath(std::vector<std::string> &relative_argument_paths,
     }
   }
 
-  if (!root_path) {
-    return {.root_path = "", .argument_paths = argument_paths};
-  }
-
-  return {.root_path = *root_path, .argument_paths = argument_paths};
+  // std::string root_path_joined = joinPath(root_path);
+  return {.root_path = joinPath(root_path),
+          .common_path_ancestor = *common_path_ancestor,
+          .argument_paths = argument_paths};
 }
 
 std::string removeLeadingRelativePath(const std::string &leading_relative_path,
@@ -222,13 +243,17 @@ void fileVisitorCallback(const std::string path, const enum file_type type,
   file_services->directory_stack.push_back(directory_id);
 }
 
-void buildCache(std::vector<std::string> &paths, sqlite3 *db) {
+void build(std::vector<std::string> paths, std::string cache_path,
+           std::ostream &console) {
+  sqlite3 *db = initDB(cache_path.c_str());
   resetDB(db);
 
-  root_calc_result root_calc_result = calcRootPath(paths, db);
+  root_calc_result root_calc_result = calcRootPath(paths);
 
+  createScanMetaData(db, {.root_dir = root_calc_result.root_path.c_str()});
   int root_id = createDirectory(
-      db, {.parent_id = -1, .name = root_calc_result.root_path.c_str()});
+      db,
+      {.parent_id = -1, .name = root_calc_result.common_path_ancestor.c_str()});
 
   std::vector<int> directory_stack{root_id};
   for (const argument_path path : root_calc_result.argument_paths) {
@@ -243,27 +268,5 @@ void buildCache(std::vector<std::string> &paths, sqlite3 *db) {
 
     directory_stack = {root_id};
   }
+  freeDB(db);
 }
-
-file_hash_rows extractUsingCache(sqlite3 *db) {
-  return {fetchAllDirectories(db), fetchAllHashes(db)};
-}
-
-/**
- *
- * $49 = "/home/jack/Desktop/#inbox/sort_msi_windows_desktop_DDrive/Desktop"
-  (gdb) p ((file_visitor_services *)services)->directory_stack
-  $50 = std::vector of length 3, capacity 4 = {1, 3, 4}
-  (gdb) p ((file_visitor_services *)services)->depth
-  $51 = 1
-
-  $37 = "/home/jack/Desktop/#inbox/sort_msi_windows_desktop_DDrive/UserFaces"
-  (gdb) p ((file_visitor_services *)services)->directory_stack
-  $38 = std::vector of length 2, capacity 2 = {1, 3}
-  (gdb) p ((file_visitor_services *)services)->depth
-
-
- *
- *
- *
- */

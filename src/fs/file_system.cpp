@@ -15,7 +15,30 @@ std::string qualifyRelativeURL(std::string &relative_path) {
   return std::string(std::filesystem::absolute(canonicalized_path).c_str());
 }
 
-int testing() { return 5; }
+std::string joinPath(std::vector<std::string> const &path_segments) {
+  if (path_segments.size() == 0) {
+    return "";
+  }
+
+  if (path_segments.size() == 1) {
+    return path_segments[0];
+  }
+
+  std::string joined_path{};
+  int i = 0;
+  if (path_segments[0].size() == 1 &&
+      path_segments[0][0] == std::filesystem::path::preferred_separator) {
+    joined_path += std::filesystem::path::preferred_separator;
+    ++i;
+  }
+
+  for (; i < path_segments.size() - 1; ++i) {
+    joined_path += path_segments[i];
+    joined_path += std::filesystem::path::preferred_separator;
+  }
+  joined_path += path_segments[path_segments.size() - 1];
+  return joined_path;
+}
 
 std::ifstream openFile(std::string filePath) {
   std::ifstream file(filePath, std::ios::binary);
@@ -72,4 +95,20 @@ void extractHash(hash hash, std::string path) {
   }
 
   OPENSSL_free(md5_digest);
+}
+
+bool fileExists(std::string const &file_path) {
+  return std::filesystem::exists(file_path);
+}
+
+void createDirectory(std::string const &path) {
+  try {
+    std::filesystem::create_directory(path);
+    std::filesystem::permissions(path, std::filesystem::perms::owner_all |
+                                           std::filesystem::perms::group_all |
+                                           std::filesystem::perms::others_read |
+                                           std::filesystem::perms::others_exec);
+  } catch (std::filesystem::filesystem_error &e) {
+    throw create_directory_error(e.what());
+  }
 }

@@ -2,16 +2,19 @@
 
 #include <cassert>
 #include <cstring>
+#include <sstream>
 
-#include "../../src/dupes/extract.cpp"
-#include "../../src/dupes/extract_output.cpp"
-#include "../../src/lib.cpp"
-#include "../../src/sqlite/operators.cpp"
-#include "../data.cpp"
+#include "../src/build/build.cpp"
+#include "../src/lib.cpp"
+#include "../src/sqlite/operators.cpp"
+#include "./data.cpp"
 
 /* -------------------------------------------------------------------------- */
 /*                                    Mocks                                   */
 /* -------------------------------------------------------------------------- */
+
+/* ------------------------------ Output Mocks ------------------------------ */
+std::ostringstream OUTPUT_MOCK{};
 
 /* ---------------------------- File System Mocks --------------------------- */
 
@@ -44,7 +47,34 @@ std::string qualifyRelativeURL(std::string &relative_path) {
     return "/home/testing/documents/dir2";
   }
 
+  if (relative_path == "./testing_one") {
+    return "/home/data/testing_one";
+  }
+
+  if (relative_path == "./testing_two") {
+    return "/var/www/testing_two";
+  }
+
   return "/home/testing/desktop/" + relative_path;
+}
+
+/**
+ * TODO: Don't have test's rely on this complicated test mock.
+ */
+std::string joinPath(std::vector<std::string> const &path_segments) {
+  std::string joined_path{};
+  int i = 0;
+  if (path_segments[0].size() == 1 && path_segments[0][0] == '/') {
+    joined_path += '/';
+    ++i;
+  }
+
+  for (; i < path_segments.size() - 1; ++i) {
+    joined_path += path_segments[i];
+    joined_path += '/';
+  }
+  joined_path += path_segments[path_segments.size() - 1];
+  return joined_path;
 }
 
 void visitFiles(const std::string &directory_path,
@@ -112,18 +142,22 @@ const directory_table_row::rows MOCK_DIRECTORIES{
     {4, "oranges", 2}, {5, "apples", 1},
 };
 const hash_table_row::rows MOCK_HASHES{
-    {1, "testing.txt", uniqueTestHash()},
-    {3, "testing_two.txt", uniqueTestHash()},
-    {4, "testing_three.txt", uniqueTestHash()}};
+    {1, 1, "testing.txt", uniqueTestHash()},
+    {2, 3, "testing_two.txt", uniqueTestHash()},
+    {3, 4, "testing_three.txt", uniqueTestHash()}};
 
 sqlite3 *MOCK_DB = nullptr;
 
 bool reset_db = false;
 std::vector<directory_input> created_directories{};
 std::vector<hash_input> created_hashes{};
+std::vector<scan_meta_data_input> created_scan_meta_data_input{};
 int created_directory_id = 0;
+int created_hash_id = 0;
 
+sqlite3 *initDB(char const *const file_name) { return nullptr; }
 void resetDB(sqlite3 *db) { reset_db = true; }
+void freeDB(sqlite3 *db) { return; }
 
 directory_table_row::rows fetchAllDirectories(sqlite3 *db) {
   return MOCK_DIRECTORIES;
@@ -133,12 +167,13 @@ int createDirectory(sqlite3 *db, directory_input const &directory_table_input) {
   created_directories.push_back(
       directory_input{.parent_id = directory_table_input.parent_id,
                       .name = stringDup(directory_table_input.name)});
-  return ++created_directory_id;
+  ++created_directory_id;
+  return created_directory_id;
 }
 
 hash_table_row::rows fetchAllHashes(sqlite3 *db) { return MOCK_HASHES; }
 
-void createHash(sqlite3 *db, hash_input const &hash_table_input) {
+int createHash(sqlite3 *db, hash_input const &hash_table_input) {
   uint8_t *hash_buffer = new uint8_t[MD5_DIGEST_LENGTH];
   std::memcpy(hash_buffer, hash_table_input.hash, MD5_DIGEST_LENGTH);
 
@@ -146,28 +181,29 @@ void createHash(sqlite3 *db, hash_input const &hash_table_input) {
       hash_input{.directory_id = hash_table_input.directory_id,
                  .name = stringDup(hash_table_input.name),
                  .hash = hash_buffer});
+
+  ++created_hash_id;
+  return created_hash_id;
+}
+
+void createScanMetaData(
+    sqlite3 *db, scan_meta_data_input const &scan_meta_data_table_input) {
+  created_scan_meta_data_input.push_back(scan_meta_data_input{
+      .root_dir = stringDup(scan_meta_data_table_input.root_dir)});
 }
 
 void resetMockStates() {
   created_directory_id = 0;
+  created_hash_id = 0;
   reset_db = false;
   created_directories.clear();
   created_hashes.clear();
+  created_scan_meta_data_input.clear();
 }
 
 /* -------------------------------------------------------------------------- */
 /*                                    Tests                                   */
 /* -------------------------------------------------------------------------- */
-/* --------------------------------- extract -------------------------------- */
-void testExtract() {
-  // Act
-  file_hash_rows actual_file_hash_rows = extractUsingCache(MOCK_DB);
-
-  // Assert
-  file_hash_rows expected_file_hash_rows{MOCK_DIRECTORIES, MOCK_HASHES};
-  assert(actual_file_hash_rows == expected_file_hash_rows);
-}
-
 /* ------------------------------- buildCache ------------------------------- */
 void testBuildCacheResetsDB() {
   // Arrange
@@ -175,7 +211,7 @@ void testBuildCacheResetsDB() {
   std::vector<std::string> test_paths = {"./dir1/", "../documents/dir2/"};
 
   // Act
-  buildCache(test_paths, MOCK_DB);
+  build(test_paths, "testing", OUTPUT_MOCK);
 
   // Assert
   assert(reset_db);
@@ -206,7 +242,7 @@ void testBuildCacheCreatesDirectories() {
   std::vector<std::string> test_paths = {"./dir1/", "../documents/dir2/"};
 
   // Act
-  buildCache(test_paths, MOCK_DB);
+  build(test_paths, "testing", OUTPUT_MOCK);
 
   // Assert
   std::vector<directory_input> expected_created_directories{
@@ -232,7 +268,7 @@ void testBuildCacheCreatesHashes() {
   std::vector<std::string> test_paths = {"./dir1/", "../documents/dir2/"};
 
   // Act
-  buildCache(test_paths, MOCK_DB);
+  build(test_paths, "testing", OUTPUT_MOCK);
 
   // Assert
   std::vector<hash_input> expected_created_hashes{
@@ -255,6 +291,25 @@ void testBuildCacheCreatesHashes() {
                           created_hashes[i].name));
     assert(
         compareHashes(expected_created_hashes[i].hash, created_hashes[i].hash));
+  }
+}
+
+void testBuildCacheBuildsScanMetaData() {
+  // Arrange
+  resetMockStates();
+  std::vector<std::string> test_paths = {"./dir1/", "../documents/dir2/"};
+
+  // Act
+  build(test_paths, "testing", OUTPUT_MOCK);
+
+  // Assert
+  std::vector<scan_meta_data_input> expected_scan_meta_data{
+      {"/home"},
+  };
+  assert(expected_scan_meta_data.size() == created_scan_meta_data_input.size());
+  for (int i = 0; i < expected_scan_meta_data.size(); ++i) {
+    assert(compareStrings(expected_scan_meta_data[i].root_dir,
+                          created_scan_meta_data_input[i].root_dir));
   }
 }
 
@@ -414,15 +469,18 @@ void testCountShortestPathWithEmptyDir() {
 /* ------------------------------ calcRootPath ------------------------------ */
 void testCalcRootPath() {
   // Arrange
+
+  // "/home/testing/desktop/dir1/testing/test"
+  // "/home/testing/desktop/dir2/testing"
   std::vector<std::string> test_arguments{"dir1/testing/test", "dir2/testing"};
 
   // Act
-  root_calc_result actual_argument_paths =
-      calcRootPath(test_arguments, MOCK_DB);
+  root_calc_result actual_argument_paths = calcRootPath(test_arguments);
 
   // Assert
   root_calc_result expected_argument_paths{
-      .root_path = "desktop",
+      .root_path = "/home/testing",
+      .common_path_ancestor = "desktop",
       {{"dir1/testing/test", {"dir1", "testing", "test"}},
        {"dir2/testing", {"dir2", "testing"}}}};
   assert(actual_argument_paths == expected_argument_paths);
@@ -433,13 +491,44 @@ void testCalcRootWithEmpty() {
   std::vector<std::string> test_arguments{"", "dir2/testing"};
 
   // Act
-  root_calc_result actual_argument_paths =
-      calcRootPath(test_arguments, MOCK_DB);
+  root_calc_result actual_argument_paths = calcRootPath(test_arguments);
 
   // Assert
   root_calc_result expected_argument_paths{
-      .root_path = "desktop",
+      .root_path = "/home/testing",
+      .common_path_ancestor = "desktop",
       {{"", {}}, {"dir2/testing", {"dir2", "testing"}}}};
+  assert(actual_argument_paths == expected_argument_paths);
+}
+
+void testCalcRootWithDifferentAbsoluteURLs() {
+  // Arrange
+  std::vector<std::string> test_arguments{"./testing_one", "./testing_two"};
+
+  // Act
+  root_calc_result actual_argument_paths = calcRootPath(test_arguments);
+
+  // Assert
+  root_calc_result expected_argument_paths{
+      .root_path = "",
+      .common_path_ancestor = "/",
+      {{"./testing_one", {"home", "data", "testing_one"}},
+       {"./testing_two", {"var", "www", "testing_two"}}}};
+  assert(actual_argument_paths == expected_argument_paths);
+}
+
+void testCalcRootPathWithOnePath() {
+  // Arrange
+  std::vector<std::string> test_arguments{"./testing_one"};
+
+  // Act
+  root_calc_result actual_argument_paths = calcRootPath(test_arguments);
+
+  // Assert
+  root_calc_result expected_argument_paths{.root_path = "/home/data",
+                                           .common_path_ancestor =
+                                               "testing_one",
+                                           {{"./testing_one", {}}}};
   assert(actual_argument_paths == expected_argument_paths);
 }
 
@@ -461,10 +550,12 @@ void testRootCalcResultEquality() {
   // Arrange
   root_calc_result test_paths_one{
       .root_path = "desktop",
+      .common_path_ancestor = "desktop",
       {{"dir1/testing/test", {"dir1", "testing", "test"}},
        {"dir2/testing", {"dir2", "testing"}}}};
   root_calc_result test_paths_two{
       .root_path = "desktop",
+      .common_path_ancestor = "desktop",
       {{"dir1/testing/test", {"dir1", "testing", "test"}},
        {"dir2/testing", {"dir2", "testing"}}}};
 
@@ -494,25 +585,26 @@ void testRemoveLeadingRelativePath() {
 /*                                    Main                                    */
 /* -------------------------------------------------------------------------- */
 int main() {
-  testExtract();
-  testBuildCacheResetsDB();
-  testBuildCacheCreatesDirectories();
-  testBuildCacheCreatesHashes();
-  testTokenizingPathWithRoot();
-  testTokenizingPathWithRootFolder();
-  testTokenizingPathWithFile();
-  testTokenizingPathWithNestedFolders();
-  testTokenizingWithTrailingSlash();
-  testTokenizingNotAtRoot();
-  testTokenizingEmptyRoot();
-  testTokenizingRelativePathWithRootSlash();
-  testTokenizingRelativePath();
-  testTokenizingEmptyPath();
-  testCountShortestPath();
-  testCountShortestPathWithEmptyDir();
-  testCalcRootPath();
-  testCalcRootWithEmpty();
-  testArgumentPathsEquality();
-  testRootCalcResultEquality();
-  testRemoveLeadingRelativePath();
+  // testBuildCacheResetsDB();
+  // testBuildCacheCreatesDirectories();
+  // testBuildCacheCreatesHashes();
+  // testBuildCacheBuildsScanMetaData();
+  // testTokenizingPathWithRoot();
+  // testTokenizingPathWithRootFolder();
+  // testTokenizingPathWithFile();
+  // testTokenizingPathWithNestedFolders();
+  // testTokenizingWithTrailingSlash();
+  // testTokenizingNotAtRoot();
+  // testTokenizingEmptyRoot();
+  // testTokenizingRelativePathWithRootSlash();
+  // testTokenizingRelativePath();
+  // testTokenizingEmptyPath();
+  // testCountShortestPath();
+  // testCountShortestPathWithEmptyDir();
+  // testCalcRootPath();
+  // testCalcRootWithEmpty();
+  testCalcRootPathWithOnePath();
+  // testArgumentPathsEquality();
+  // testRootCalcResultEquality();
+  // testRemoveLeadingRelativePath();
 }

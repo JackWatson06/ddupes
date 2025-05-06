@@ -2,4 +2,4 @@
 #include <string>
 #include <vector>
 
-void dupes(std::vector<std::string> paths, std::ostream &console, bool);
+void dupes(std::string cache_path, std::ostream &console);

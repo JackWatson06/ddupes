@@ -15,6 +15,7 @@ constexpr uint8_t const EMPTY_HASH[MD5_DIGEST_LENGTH] = {
 
 int stringLength(str_const);
 char *stringDup(str_const);
+char *stringConcat(str_const, str_const);
 bool compareStrings(str_const, str_const);
 hash computeHash(hashes_const, int);
 bool compareHashes(hash_const, hash_const);

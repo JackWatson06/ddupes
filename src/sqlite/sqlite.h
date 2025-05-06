@@ -31,6 +31,7 @@ typedef directory_table_row const directory_table_row_const;
 
 struct hash_table_row {
   typedef std::vector<hash_table_row> rows;
+  int id;
   int const directory_id;
   str_const name;
   hash_const hash;
@@ -40,12 +41,10 @@ struct hash_table_row {
 
 typedef hash_table_row const hash_table_row_const;
 
-struct hash_input {
-  int const directory_id;
-  str_const name;
-  hash_const hash;
+struct scan_meta_data_table_row {
+  str_const root_dir;
 
-  bool operator==(hash_input const &rhs) const;
+  bool operator==(scan_meta_data_table_row const &rhs) const;
 };
 
 struct directory_input {
@@ -55,12 +54,30 @@ struct directory_input {
   bool operator==(directory_input const &rhs) const;
 };
 
-int fetchLastDirectoryId(sqlite3 *db);
+struct hash_input {
+  int const directory_id;
+  str_const name;
+  hash_const hash;
+
+  bool operator==(hash_input const &rhs) const;
+};
+
+struct scan_meta_data_input {
+  str_const root_dir;
+
+  bool operator==(scan_meta_data_input const &rhs) const;
+};
+
 directory_table_row::rows fetchAllDirectories(sqlite3 *db);
 int createDirectory(sqlite3 *db, directory_input const &directory_table_input);
 
 hash_table_row::rows fetchAllHashes(sqlite3 *db);
-void createHash(sqlite3 *db, hash_input const &hash_table_input);
+int createHash(sqlite3 *db, hash_input const &hash_table_input);
+void deleteHash(sqlite3 *db, int id);
+
+scan_meta_data_table_row fetchScanMetaData(sqlite3 *db);
+void createScanMetaData(sqlite3 *db,
+                        scan_meta_data_input const &scan_meta_data_input);
 
 /* -------------------------------------------------------------------------- */
 /*                                   Errors                                   */
@@ -90,6 +107,11 @@ public:
 class unable_to_insert_error : public std::runtime_error {
 public:
   unable_to_insert_error(const char *message) : std::runtime_error(message) {}
+};
+
+class unable_to_delete_error : public std::runtime_error {
+public:
+  unable_to_delete_error(const char *message) : std::runtime_error(message) {}
 };
 
 class not_found_error : public std::runtime_error {

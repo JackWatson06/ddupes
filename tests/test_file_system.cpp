@@ -35,8 +35,6 @@ void testAbsoluteFileResolution() {
 
   // Assert
   assert(actual_absolute_path != folder);
-  // Regex assert
-  // assert(false);
 }
 
 void testAbsoluteFileResolutionWithDirectoryLinks() {
@@ -49,7 +47,6 @@ void testAbsoluteFileResolutionWithDirectoryLinks() {
   // Assert
   std::string expected_path = "tests/testing_dirs/dir1";
   assert(actual_absolute_path != folder);
-  // assert(false);
 }
 
 /* ------------------------------- visitFiles ------------------------------- */
@@ -149,11 +146,106 @@ void testHashingAnEmptyFile() {
   }
 }
 
+/* ------------------------------- fileExists ------------------------------- */
+void testFileExists() {
+  // Arrange
+  std::string file = "tests/testing_dirs/dir1/example6.txt";
+
+  // Act
+  bool exists = fileExists(file);
+
+  // Assert
+  assert(exists == true);
+}
+
+void testFileExistsCheckingFolder() {
+  // Arrange
+  std::string file = "tests/testing_dirs/dir1";
+
+  // Act
+  bool exists = fileExists(file);
+
+  // Assert
+  assert(exists == true);
+}
+
+void testFileExistsMissing() {
+  // Arrange
+  std::string file = "tests/testing_dirs/dir1/missing.txt";
+
+  // Act
+  bool exists = fileExists(file);
+
+  // Assert
+  assert(exists == false);
+}
+
+/* ----------------------------- createDirectory ---------------------------- */
+void testCreateDirectory() {
+  // Assert
+  std::string test_directory = "tests/testing_dirs/test_create";
+
+  // Act
+  createDirectory(test_directory);
+
+  // Assert
+  assert(fileExists(test_directory));
+
+  // Cleanup
+  std::filesystem::remove(test_directory);
+}
+
+void testCreateDirectorySetCorrectPerms() {
+  // Assert
+  std::string test_directory = "tests/testing_dirs/test_create";
+
+  // Act
+  createDirectory(test_directory);
+
+  // Assert
+  std::filesystem::perms folder_perms =
+      std::filesystem::status(test_directory).permissions();
+  std::filesystem::perms expected_perms =
+      std::filesystem::perms::owner_all | std::filesystem::perms::group_all |
+      std::filesystem::perms::others_read | std::filesystem::perms::others_exec;
+  assert(folder_perms == expected_perms);
+
+  // Cleanup
+  std::filesystem::remove(test_directory);
+}
+
+void testCreateDirectoryPermissionsError() {
+  // Assert
+  std::filesystem::permissions("tests/testing_dirs",
+                               std::filesystem::perms::owner_read);
+
+  try {
+    // Act
+    createDirectory("tests/testing_dirs/test_create");
+    assert(false);
+  } catch (create_directory_error &e) {
+    // Assert
+    assert(true);
+  }
+
+  // Cleanup
+  std::filesystem::permissions("tests/testing_dirs",
+                               std::filesystem::perms::owner_all |
+                                   std::filesystem::perms::group_all |
+                                   std::filesystem::perms::others_read |
+                                   std::filesystem::perms::others_exec);
+}
+
 int main() {
-  testVisitingAllFilesAndDirectories();
   testAbsoluteFileResolution();
   testAbsoluteFileResolutionWithDirectoryLinks();
+  testVisitingAllFilesAndDirectories();
   testHashingAFile();
   testHashingAFileThatDoesntExist();
   testHashingAnEmptyFile();
+  testFileExists();
+  testFileExistsMissing();
+  testCreateDirectory();
+  testCreateDirectorySetCorrectPerms();
+  testCreateDirectoryPermissionsError();
 }
