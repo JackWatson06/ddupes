@@ -137,68 +137,70 @@ void extractHash(uint8_t *hash, std::string path) {
 
 /* ------------------------------ Database Mock ----------------------------- */
 
-const directory_table_row::rows MOCK_DIRECTORIES{
+const directory_table_row::rows fetch_all_directories_return{
     {1, "dir1", -1},   {2, "dir2", -1},  {3, "oranges", 1},
     {4, "oranges", 2}, {5, "apples", 1},
 };
-const hash_table_row::rows MOCK_HASHES{
+const hash_table_row::rows fetch_all_hashes_return{
     {1, 1, "testing.txt", uniqueTestHash()},
     {2, 3, "testing_two.txt", uniqueTestHash()},
     {3, 4, "testing_three.txt", uniqueTestHash()}};
 
 sqlite3 *MOCK_DB = nullptr;
 
-bool reset_db = false;
-std::vector<directory_input> created_directories{};
-std::vector<hash_input> created_hashes{};
-std::vector<scan_meta_data_input> created_scan_meta_data_input{};
-int created_directory_id = 0;
-int created_hash_id = 0;
+bool last_reset_db = false;
+std::vector<directory_input> last_create_directory{};
+std::vector<hash_input> last_create_hash{};
+std::vector<scan_meta_data_input> last_create_scan_meta_data{};
+int last_create_directory_id = 0;
+int last_create_hash_id = 0;
 
 sqlite3 *initDB(char const *const file_name) { return nullptr; }
-void resetDB(sqlite3 *db) { reset_db = true; }
+void resetDB(sqlite3 *db) { last_reset_db = true; }
 void freeDB(sqlite3 *db) { return; }
 
 directory_table_row::rows fetchAllDirectories(sqlite3 *db) {
-  return MOCK_DIRECTORIES;
+  return fetch_all_directories_return;
 }
 
 int createDirectory(sqlite3 *db, directory_input const &directory_table_input) {
-  created_directories.push_back(
+  last_create_directory.push_back(
       directory_input{.parent_id = directory_table_input.parent_id,
                       .name = stringDup(directory_table_input.name)});
-  ++created_directory_id;
-  return created_directory_id;
+  ++last_create_directory_id;
+  return last_create_directory_id;
 }
 
-hash_table_row::rows fetchAllHashes(sqlite3 *db) { return MOCK_HASHES; }
+hash_table_row::rows fetchAllHashes(sqlite3 *db) {
+  return fetch_all_hashes_return;
+}
 
 int createHash(sqlite3 *db, hash_input const &hash_table_input) {
   uint8_t *hash_buffer = new uint8_t[MD5_DIGEST_LENGTH];
   std::memcpy(hash_buffer, hash_table_input.hash, MD5_DIGEST_LENGTH);
 
-  created_hashes.push_back(
+  last_create_hash.push_back(
       hash_input{.directory_id = hash_table_input.directory_id,
                  .name = stringDup(hash_table_input.name),
                  .hash = hash_buffer});
 
-  ++created_hash_id;
-  return created_hash_id;
+  ++last_create_hash_id;
+  return last_create_hash_id;
 }
 
 void createScanMetaData(
     sqlite3 *db, scan_meta_data_input const &scan_meta_data_table_input) {
-  created_scan_meta_data_input.push_back(scan_meta_data_input{
+  last_create_scan_meta_data.push_back(scan_meta_data_input{
       .root_dir = stringDup(scan_meta_data_table_input.root_dir)});
 }
 
 void resetMockStates() {
-  created_directory_id = 0;
-  created_hash_id = 0;
-  reset_db = false;
-  created_directories.clear();
-  created_hashes.clear();
-  created_scan_meta_data_input.clear();
+  last_create_directory_id = 0;
+  last_create_hash_id = 0;
+  last_reset_db = false;
+  last_create_directory.clear();
+  last_create_hash.clear();
+  last_create_scan_meta_data.clear();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -214,7 +216,7 @@ void testBuildCacheResetsDB() {
   build(test_paths, "testing", OUTPUT_MOCK);
 
   // Assert
-  assert(reset_db);
+  assert(last_reset_db);
 }
 
 void testBuildCacheCreatesDirectories() {
@@ -253,12 +255,12 @@ void testBuildCacheCreatesDirectories() {
       {11, "dir3"},        {13, "testing"},    {14, "test"},
   };
 
-  assert(expected_created_directories.size() == created_directories.size());
+  assert(expected_created_directories.size() == last_create_directory.size());
   for (int i = 0; i < expected_created_directories.size(); ++i) {
     assert(expected_created_directories[i].parent_id ==
-           created_directories[i].parent_id);
+           last_create_directory[i].parent_id);
     assert(compareStrings(expected_created_directories[i].name,
-                          created_directories[i].name));
+                          last_create_directory[i].name));
   }
 }
 
@@ -283,14 +285,14 @@ void testBuildCacheCreatesHashes() {
       {12, "example_three.txt", uniqueTestHash()},
       {15, "example_four.txt", uniqueTestHash()},
   };
-  assert(expected_created_hashes.size() == created_hashes.size());
+  assert(expected_created_hashes.size() == last_create_hash.size());
   for (int i = 0; i < expected_created_hashes.size(); ++i) {
     assert(expected_created_hashes[i].directory_id ==
-           created_hashes[i].directory_id);
+           last_create_hash[i].directory_id);
     assert(compareStrings(expected_created_hashes[i].name,
-                          created_hashes[i].name));
-    assert(
-        compareHashes(expected_created_hashes[i].hash, created_hashes[i].hash));
+                          last_create_hash[i].name));
+    assert(compareHashes(expected_created_hashes[i].hash,
+                         last_create_hash[i].hash));
   }
 }
 
@@ -306,10 +308,10 @@ void testBuildCacheBuildsScanMetaData() {
   std::vector<scan_meta_data_input> expected_scan_meta_data{
       {"/home"},
   };
-  assert(expected_scan_meta_data.size() == created_scan_meta_data_input.size());
+  assert(expected_scan_meta_data.size() == last_create_scan_meta_data.size());
   for (int i = 0; i < expected_scan_meta_data.size(); ++i) {
     assert(compareStrings(expected_scan_meta_data[i].root_dir,
-                          created_scan_meta_data_input[i].root_dir));
+                          last_create_scan_meta_data[i].root_dir));
   }
 }
 
@@ -585,26 +587,26 @@ void testRemoveLeadingRelativePath() {
 /*                                    Main                                    */
 /* -------------------------------------------------------------------------- */
 int main() {
-  // testBuildCacheResetsDB();
-  // testBuildCacheCreatesDirectories();
-  // testBuildCacheCreatesHashes();
-  // testBuildCacheBuildsScanMetaData();
-  // testTokenizingPathWithRoot();
-  // testTokenizingPathWithRootFolder();
-  // testTokenizingPathWithFile();
-  // testTokenizingPathWithNestedFolders();
-  // testTokenizingWithTrailingSlash();
-  // testTokenizingNotAtRoot();
-  // testTokenizingEmptyRoot();
-  // testTokenizingRelativePathWithRootSlash();
-  // testTokenizingRelativePath();
-  // testTokenizingEmptyPath();
-  // testCountShortestPath();
-  // testCountShortestPathWithEmptyDir();
-  // testCalcRootPath();
-  // testCalcRootWithEmpty();
+  testBuildCacheResetsDB();
+  testBuildCacheCreatesDirectories();
+  testBuildCacheCreatesHashes();
+  testBuildCacheBuildsScanMetaData();
+  testTokenizingPathWithRoot();
+  testTokenizingPathWithRootFolder();
+  testTokenizingPathWithFile();
+  testTokenizingPathWithNestedFolders();
+  testTokenizingWithTrailingSlash();
+  testTokenizingNotAtRoot();
+  testTokenizingEmptyRoot();
+  testTokenizingRelativePathWithRootSlash();
+  testTokenizingRelativePath();
+  testTokenizingEmptyPath();
+  testCountShortestPath();
+  testCountShortestPathWithEmptyDir();
+  testCalcRootPath();
+  testCalcRootWithEmpty();
   testCalcRootPathWithOnePath();
-  // testArgumentPathsEquality();
-  // testRootCalcResultEquality();
-  // testRemoveLeadingRelativePath();
+  testArgumentPathsEquality();
+  testRootCalcResultEquality();
+  testRemoveLeadingRelativePath();
 }
