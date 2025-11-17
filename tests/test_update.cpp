@@ -11,6 +11,7 @@
 
 /* ------------------------------ Output Mocks ------------------------------ */
 std::ostringstream OUTPUT_MOCK{};
+std::ostringstream OUTPUT_ERROR_MOCK{};
 
 /* ---------------------------------- Mocks --------------------------------- */
 const std::unordered_map<std::string, bool> file_exists_return{

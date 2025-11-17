@@ -50,8 +50,9 @@ std::ifstream openFile(std::string filePath) {
 
 void visitFiles(const std::string &directory_path,
                 file_visitor_callback callback, void *context) {
-  for (const auto &entry :
-       std::filesystem::recursive_directory_iterator(directory_path)) {
+  for (const auto &entry : std::filesystem::recursive_directory_iterator(
+           directory_path,
+           std::filesystem::directory_options::skip_permission_denied)) {
     if (std::filesystem::is_regular_file(entry.path())) {
       callback(entry.path(), FILE_TYPE_FILE, context);
     }

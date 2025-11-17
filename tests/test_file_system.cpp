@@ -97,6 +97,49 @@ void testVisitingAllFilesAndDirectories() {
   assert(expected_file_nodes == visited_files);
 }
 
+void testVisitFileSkipsPermissionIssues() {
+  // Arrange
+  std::filesystem::permissions("tests/testing_dirs/dir1/sub_dir_two",
+                               std::filesystem::perms::owner_write);
+  std::string folder = "./tests/testing_dirs/../testing_dirs/dir1";
+  FileNodes visited_files{};
+
+  // Act
+  visitFiles(folder, testFileVisitorCallback, &visited_files);
+
+  // Assert
+  FileNodes expected_file_nodes{
+      {"./tests/testing_dirs/../testing_dirs/dir1/testing_two",
+       FILE_TYPE_DIRECTORY},
+      {"./tests/testing_dirs/../testing_dirs/dir1/example2.txt",
+       FILE_TYPE_FILE},
+      {"./tests/testing_dirs/../testing_dirs/dir1/testing_one",
+       FILE_TYPE_DIRECTORY},
+      {"./tests/testing_dirs/../testing_dirs/dir1/testing_one/testing_three",
+       FILE_TYPE_DIRECTORY},
+      {"./tests/testing_dirs/../testing_dirs/dir1/"
+       "testing_one/testing_three/testing_four",
+       FILE_TYPE_DIRECTORY},
+      {"./tests/testing_dirs/../testing_dirs/dir1/testing_one/"
+       "testing_three/testing_four/example1.txt",
+       FILE_TYPE_FILE},
+      {"./tests/testing_dirs/../testing_dirs/dir1/example5.txt",
+       FILE_TYPE_FILE},
+      {"./tests/testing_dirs/../testing_dirs/dir1/example6.txt",
+       FILE_TYPE_FILE},
+      {"./tests/testing_dirs/../testing_dirs/dir1/example3.txt",
+       FILE_TYPE_FILE},
+      {"./tests/testing_dirs/../testing_dirs/dir1/sub_dir",
+       FILE_TYPE_DIRECTORY},
+      {"./tests/testing_dirs/../testing_dirs/dir1/sub_dir/example4.txt",
+       FILE_TYPE_FILE},
+      {"./tests/testing_dirs/../testing_dirs/dir1/sub_dir/example6.txt",
+       FILE_TYPE_FILE},
+      {"./tests/testing_dirs/../testing_dirs/dir1/example1.txt",
+       FILE_TYPE_FILE}};
+  assert(expected_file_nodes == visited_files);
+}
+
 /* ------------------------------- extractHash ------------------------------ */
 void testHashingAFile() {
   // Arrange
@@ -240,6 +283,7 @@ int main() {
   testAbsoluteFileResolution();
   testAbsoluteFileResolutionWithDirectoryLinks();
   testVisitingAllFilesAndDirectories();
+  testVisitFileSkipsPermissionIssues();
   testHashingAFile();
   testHashingAFileThatDoesntExist();
   testHashingAnEmptyFile();

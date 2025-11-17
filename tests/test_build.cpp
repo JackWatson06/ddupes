@@ -315,6 +315,14 @@ void testBuildCacheBuildsScanMetaData() {
   }
 }
 
+void testBuildPrintsHashesFound() {}
+
+void testBuildSkipsFileSystemErrors() {}
+
+void testBuildPrintsFileSystemErrorsToErrorStream() {}
+
+void testBuildPrintsDirectoriesFound() {}
+
 /* ---------------------------- tokenizeRootPath ---------------------------- */
 void testTokenizingPathWithRoot() {
   // Arrange

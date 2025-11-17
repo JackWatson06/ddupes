@@ -26,6 +26,7 @@ struct root_calc_result {
 
 struct file_visitor_services {
   sqlite3 *db;
+  std::ostream *console;
   std::string relative_argument_path;
   std::vector<int> directory_stack;
   int depth;
@@ -228,7 +229,13 @@ void fileVisitorCallback(const std::string path, const enum file_type type,
 
   if (type == FILE_TYPE_FILE) {
     uint8_t file_hash[MD5_DIGEST_LENGTH];
-    extractHash(file_hash, path);
+    *(file_services->console) << "Hashing File: " << path << '\n';
+    try {
+
+      extractHash(file_hash, path);
+    } catch (file_open_error &error) {
+      *(file_services->console) << "Error opening file: " << path << '\n';
+    }
     createHash(file_services->db,
                {.directory_id = file_services->directory_stack.back(),
                 .name = file_node_name.c_str(),
@@ -237,6 +244,7 @@ void fileVisitorCallback(const std::string path, const enum file_type type,
   }
 
   ++file_services->depth;
+  *(file_services->console) << "Discovered Directory: " << path << '\n';
   int directory_id = createDirectory(
       file_services->db, {.parent_id = file_services->directory_stack.back(),
                           .name = file_node_name.c_str()});
@@ -262,11 +270,12 @@ void build(std::vector<std::string> paths, std::string cache_path,
           db, {.parent_id = directory_stack.back(), .name = token.c_str()}));
     }
 
-    file_visitor_services file_visitor_services{db, path.relative_path,
-                                                directory_stack, 0};
+    file_visitor_services file_visitor_services{
+        db, &console, path.relative_path, directory_stack, 0};
     visitFiles(path.relative_path, fileVisitorCallback, &file_visitor_services);
 
     directory_stack = {root_id};
   }
+  console << "Done scanning all files!\n";
   freeDB(db);
 }
